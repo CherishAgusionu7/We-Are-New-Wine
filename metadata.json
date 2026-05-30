@@ -1,0 +1,6 @@
+{
+  "name": "We Are New Wine",
+  "description": "An interactive, fully editable church website featuring an events calendar, sermons media, past services gallery, editable blog, leadership directory, secure prayer request form, visitor connections, and secure local content administration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
