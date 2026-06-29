@@ -41,13 +41,13 @@ body {
 /* BLACK & GOLD THEME OVERRIDES */
 
 /* Main backgrounds */
-html, body, #root, .bg-brand-bg, .bg-\[\#FDFCFB\], .bg-brand-bg\/95 {
+html, body, #root, .bg-brand-bg, .bg-\[\#fdfcfb\], .bg-brand-bg\/95 {
   background-color: #0B0B0A !important;
 }
 
 /* Container background overrides (replacing white and light-beige) */
 .bg-white, 
-.bg-[#FDFCFB], 
+.bg-\[\#fdfcfb\], 
 .bg-brand-beige, 
 .bg-\[\#F4F1EA\],
 #settings-modal-dialog,
@@ -88,7 +88,7 @@ html, body, #root, .bg-brand-bg, .bg-\[\#FDFCFB\], .bg-brand-bg\/95 {
 .text-\[\#5A5A5A\], 
 .text-\[\#6B6B6B\], 
 .text-\[\#7A7A7A\], 
-.text-[#8A8A8A] {
+.text-\[\#8a8a8a\] {
   color: #B2A795 !important; /* Medium warm grey/gold */
 }
 
