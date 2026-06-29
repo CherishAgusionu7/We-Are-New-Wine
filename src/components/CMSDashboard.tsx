@@ -178,7 +178,7 @@ export default function CMSDashboard({
       role: newStaff.role || "",
       category: (newStaff.category as any) || "leadership",
       bio: newStaff.bio || "No biography details shared yet.",
-      email: newStaff.email || "office@newwinegathering.org",
+      email: newStaff.email || "wearenewwinetribe@outlook.com",
       avatarUrl: newStaff.avatarUrl || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?fit=facearea&facepad=3&w=256&h=256&q=80"
     };
     setStaff([...staff, added]);
