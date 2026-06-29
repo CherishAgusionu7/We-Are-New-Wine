@@ -1,1760 +1,1534 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
-  Church,
-  ShieldCheck,
-  Sparkles,
-  LogIn,
-  X,
-  HelpCircle,
-  HelpCircle as QuestionIcon,
-  RefreshCw,
+  ArrowDown,
+  ArrowUp,
   Eye,
-  Info,
-  Sliders,
+  ImagePlus,
+  LayoutPanelLeft,
+  Minus,
+  Plus,
+  Redo2,
+  Save,
   Trash2,
-  Download,
-  Bell,
-  Lock,
-  Shield,
-  User as UserIcon,
-  CheckCircle,
-  AlertTriangle
+  Undo2,
+  Upload,
 } from "lucide-react";
-
+import { defaultContent } from "./cms/defaultContent";
 import {
-  GeneralConfig,
-  ChurchEvent,
-  Sermon,
-  Devotional,
-  StaffMember,
-  PastServiceGalleryItem,
-  PrayerRequest,
-  VisitorSignup,
-  User,
-  LoginHistoryEntry
-} from "./types";
-
+  fetchCMSState,
+  publishDraft,
+  resetSection,
+  restoreVersion,
+  saveDraft,
+  uploadMedia,
+} from "./cms/api";
 import {
-  initialGeneralConfig,
-  initialEvents,
-  initialSermons,
-  initialDevotionals,
-  initialStaff,
-  initialGallery
-} from "./initialData";
-
-import Navbar from "./components/Navbar";
-import Footer from "./components/Footer";
-import CMSDashboard from "./components/CMSDashboard";
+  CMSState,
+  ColorSettings,
+  MediaItem,
+  NavItem,
+  PageModel,
+  SectionModel,
+  SiteContent,
+  TypographySettings,
+} from "./cms/types";
 import {
-  HomeView,
-  AboutView,
-  VisitView,
-  SermonsView,
-  EventsView,
-  GiveView,
-  ContactView
-} from "./components/Pages";
+  cloneContent,
+  ensureNavigationMatchesPages,
+  findPage,
+  findSection,
+  reorder,
+  uid,
+  updateNestedValue,
+} from "./cms/utils";
 
-export default function App() {
-  // Sync state from LocalStorage so any edits "persist" perfectly!
-  const [config, setConfig] = useState<GeneralConfig>(() => {
-    const saved = localStorage.getItem("nw_config");
-    const parsed = saved ? JSON.parse(saved) : initialGeneralConfig;
-    if (parsed) {
-      if (parsed.address === "13509 Lyndon B Johnson Fwy, Garland, TX 75041" || !parsed.address) {
-        parsed.address = "13509 Lyndon B Johnson Fwy, Garland, TX 75041";
-        parsed.googleMapsEmbedUrl = "https://maps.google.com/maps?q=13509%20Lyndon%20B%20Johnson%20Fwy,%20Garland,%20TX%2075041&t=&z=15&ie=UTF8&iwloc=&output=embed";
-      }
-      if (parsed.serviceTime !== "4:00PM") {
-        parsed.serviceTime = "4:00PM";
-        localStorage.setItem("nw_config", JSON.stringify(parsed));
-      }
-      if (!parsed.missionStatement || parsed.missionStatement.includes("God's Word") || parsed.missionStatement.includes("To create a hospitable")) {
-        parsed.missionStatement = "Our mission is to awaken a generation to Christ by proclaiming the Gospel, reviving the Holy Spirit within believers, and raising passionate young people who live by spirit and truth, and bold service, we seek to impact the world and honor God wholeheartedly.";
-        // Let's use the exact requested string:
-        parsed.missionStatement = "Our mission is to awaken a generation to Christ by proclaiming the Gospel, reviving the Holy Spirit within believers, and raising passionate young people who live by God’s Word. Through prayer, worship in spirit and truth, and bold service, we seek to impact the world and honor God wholeheartedly.";
-        localStorage.setItem("nw_config", JSON.stringify(parsed));
-      }
-      if (parsed.phone !== "(682) 412-5519") {
-        parsed.phone = "(682) 412-5519";
-        localStorage.setItem("nw_config", JSON.stringify(parsed));
-      }
-    }
-    return parsed;
-  });
+type EditorTab =
+  | "general"
+  | "homepage"
+  | "pages"
+  | "navigation"
+  | "sections"
+  | "media"
+  | "appearance"
+  | "theme"
+  | "footer"
+  | "contact"
+  | "events"
+  | "ministries";
 
-  const [events, setEvents] = useState<ChurchEvent[]>(() => {
-    const saved = localStorage.getItem("nw_events");
-    return saved ? JSON.parse(saved) : initialEvents;
-  });
+const editorTabs: { id: EditorTab; label: string }[] = [
+  { id: "general", label: "General" },
+  { id: "homepage", label: "Homepage" },
+  { id: "pages", label: "Pages" },
+  { id: "navigation", label: "Navigation" },
+  { id: "sections", label: "Sections" },
+  { id: "media", label: "Media" },
+  { id: "appearance", label: "Appearance" },
+  { id: "theme", label: "Theme" },
+  { id: "footer", label: "Footer" },
+  { id: "contact", label: "Contact" },
+  { id: "events", label: "Events" },
+  { id: "ministries", label: "Ministries" },
+];
 
-  const [sermons, setSermons] = useState<Sermon[]>(() => {
-    const saved = localStorage.getItem("nw_sermons");
-    return saved ? JSON.parse(saved) : initialSermons;
-  });
+const emptyTypography: TypographySettings = {
+  fontFamily: "Playfair Display",
+  fontSize: 16,
+  fontWeight: 400,
+  color: "#f5f0e6",
+  letterSpacing: 0,
+  lineHeight: 1.5,
+  textAlign: "left",
+  transform: "none",
+  bold: false,
+  italic: false,
+  underline: false,
+};
 
-  const [devotionals, setDevotionals] = useState<Devotional[]>(() => {
-    const saved = localStorage.getItem("nw_devotionals");
-    return saved ? JSON.parse(saved) : initialDevotionals;
-  });
+function applyTypography(base: TypographySettings, partial?: Partial<TypographySettings>): React.CSSProperties {
+  const merged = { ...base, ...(partial || {}) };
+  return {
+    fontFamily: merged.fontFamily,
+    fontSize: `${merged.fontSize}px`,
+    fontWeight: merged.bold ? 700 : merged.fontWeight,
+    color: merged.color,
+    letterSpacing: `${merged.letterSpacing}px`,
+    lineHeight: merged.lineHeight,
+    textAlign: merged.textAlign,
+    textTransform: merged.transform,
+    fontStyle: merged.italic ? "italic" : "normal",
+    textDecoration: merged.underline ? "underline" : "none",
+  };
+}
 
-  const [staff, setStaff] = useState<StaffMember[]>(() => {
-    const saved = localStorage.getItem("nw_staff");
-    return saved ? JSON.parse(saved) : initialStaff;
-  });
+function buttonSize(size: string): string {
+  if (size === "sm") return "px-3 py-2 text-xs";
+  if (size === "lg") return "px-7 py-4 text-base";
+  return "px-5 py-3 text-sm";
+}
 
-  const [gallery, setGallery] = useState<PastServiceGalleryItem[]>(() => {
-    const saved = localStorage.getItem("nw_gallery");
-    return saved ? JSON.parse(saved) : initialGallery;
-  });
+function App() {
+  const [cmsState, setCmsState] = useState<CMSState | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [editorOpen, setEditorOpen] = useState(true);
+  const [previewMode, setPreviewMode] = useState(false);
+  const [activePageId, setActivePageId] = useState("page-home");
+  const [activeTab, setActiveTab] = useState<EditorTab>("general");
+  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
+  const [undoStack, setUndoStack] = useState<SiteContent[]>([]);
+  const [redoStack, setRedoStack] = useState<SiteContent[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [statusMessage, setStatusMessage] = useState("Ready");
 
-  const [prayerRequests, setPrayerRequests] = useState<PrayerRequest[]>(() => {
-    const saved = localStorage.getItem("nw_prayers");
-    return saved ? JSON.parse(saved) : [];
-  });
+  const displayContent = useMemo(() => {
+    if (!cmsState) return defaultContent;
+    return previewMode ? cmsState.draft : cmsState.published;
+  }, [cmsState, previewMode]);
 
-  const [visitorSignups, setVisitorSignups] = useState<VisitorSignup[]>(() => {
-    const saved = localStorage.getItem("nw_visitors");
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  // Active navigation tab
-  const [activeTab, setActiveTab] = useState<string>("home");
-
-  // Current logged in user (starts with null or cached admin session)
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem("nw_user");
-    return saved ? JSON.parse(saved) : null;
-  });
-
-  // Admin inline edit toggler
-  const [isAdminEditMode, setIsAdminEditMode] = useState<boolean>(false);
-
-  // Modal displays
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
-  const [isPlanVisitOpen, setIsPlanVisitOpen] = useState<boolean>(false);
-
-  // Registered members database
-  const [registeredUsers, setRegisteredUsers] = useState<User[]>(() => {
-    const saved = localStorage.getItem("nw_users_list3");
-    if (saved) return JSON.parse(saved);
-    const defaultUsers: User[] = [
-      {
-        username: "CherishAgusionu",
-        role: "admin",
-        email: "cherishagusionu@yahoo.com",
-        firstName: "Cherish",
-        lastName: "Agusionu",
-        phone: "3464467150",
-        password: "Cherish12345"
-      },
-      {
-        username: "member",
-        role: "member",
-        email: "member@newwine.org",
-        firstName: "Rachel",
-        lastName: "Choice",
-        phone: "987-654-3210",
-        password: "fellowship"
-      }
-    ];
-    localStorage.setItem("nw_users_list3", JSON.stringify(defaultUsers));
-    return defaultUsers;
-  });
-
-  // Login form values
-  const [loginUsername, setLoginUsername] = useState<string>("CherishAgusionu");
-  const [loginPassword, setLoginPassword] = useState<string>("Cherish12345");
-  const [loginError, setLoginError] = useState<string | null>(null);
-
-  // Account settings states
-  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
-  const [settingsActiveTab, setSettingsActiveTab] = useState<string>("profile");
-  
-  const [settingsFirstName, setSettingsFirstName] = useState<string>("");
-  const [settingsLastName, setSettingsLastName] = useState<string>("");
-  const [settingsEmail, setSettingsEmail] = useState<string>("");
-  const [settingsPhone, setSettingsPhone] = useState<string>("");
-  const [settingsProfilePic, setSettingsProfilePic] = useState<string>("");
-
-  const [settingsPassword, setSettingsPassword] = useState<string>("");
-  const [settingsConfirmPassword, setSettingsConfirmPassword] = useState<string>("");
-  const [securitySuccessMsg, setSecuritySuccessMsg] = useState<string | null>(null);
-  const [securityErrorMsg, setSecurityErrorMsg] = useState<string | null>(null);
-
-  const [cookieAnalytics, setCookieAnalytics] = useState<boolean>(false);
-  const [cookieMarketing, setCookieMarketing] = useState<boolean>(false);
-
-  const [notifNewsletter, setNotifNewsletter] = useState<boolean>(true);
-  const [notifSystemUpdates, setNotifSystemUpdates] = useState<boolean>(true);
-  const [notifPrayerCircle, setNotifPrayerCircle] = useState<boolean>(false);
-  const [notifWeeklyDevos, setNotifWeeklyDevos] = useState<boolean>(true);
-  const [notifSermonReleases, setNotifSermonReleases] = useState<boolean>(false);
-
-  const [profileSuccessMsg, setProfileSuccessMsg] = useState<string | null>(null);
-  const [prefsSuccessMsg, setPrefsSuccessMsg] = useState<string | null>(null);
-  const [isConfirmingDelete, setIsConfirmingDelete] = useState<boolean>(false);
-
-  // Sign up state variables
-  const [isSignUpMode, setIsSignUpMode] = useState<boolean>(false);
-  const [signUpFirstName, setSignUpFirstName] = useState<string>("");
-  const [signUpLastName, setSignUpLastName] = useState<string>("");
-  const [signUpPhone, setSignUpPhone] = useState<string>("");
-  const [signUpEmail, setSignUpEmail] = useState<string>("");
-  const [signUpUsername, setSignUpUsername] = useState<string>("");
-  const [signUpPassword, setSignUpPassword] = useState<string>("");
-  const [signUpError, setSignUpError] = useState<string | null>(null);
-
-  // Verification state variables
-  const [isVerificationStep, setIsVerificationStep] = useState<boolean>(false);
-  const [generatedCode, setGeneratedCode] = useState<string>("");
-  const [userInputCode, setUserInputCode] = useState<string>("");
-  const [pendingUser, setPendingUser] = useState<User | null>(null);
-  const [verificationSuccess, setVerificationSuccess] = useState<boolean>(false);
-
-  // Sync registered users list to local storage
-  useEffect(() => {
-    localStorage.setItem("nw_users_list3", JSON.stringify(registeredUsers));
-  }, [registeredUsers]);
-
-  // Visitor planning modal state
-  const [visitName, setVisitName] = useState<string>("");
-  const [visitDate, setVisitDate] = useState<string>("");
-  const [visitTime, setVisitTime] = useState<string>("10:00 AM AM Gathering");
-  const [visitPlanSuccess, setVisitPlanSuccess] = useState<boolean>(false);
-
-  // Trigger LocalStorage saves whenever states update
-  useEffect(() => {
-    localStorage.setItem("nw_config", JSON.stringify(config));
-  }, [config]);
+  const draftContent = cmsState?.draft ?? defaultContent;
 
   useEffect(() => {
-    localStorage.setItem("nw_events", JSON.stringify(events));
-  }, [events]);
+    const load = async () => {
+      try {
+        setLoading(true);
+        const state = await fetchCMSState();
+        setCmsState(state);
 
-  useEffect(() => {
-    localStorage.setItem("nw_sermons", JSON.stringify(sermons));
-  }, [sermons]);
-
-  useEffect(() => {
-    localStorage.setItem("nw_devotionals", JSON.stringify(devotionals));
-  }, [devotionals]);
-
-  useEffect(() => {
-    localStorage.setItem("nw_staff", JSON.stringify(staff));
-  }, [staff]);
-
-  useEffect(() => {
-    localStorage.setItem("nw_gallery", JSON.stringify(gallery));
-  }, [gallery]);
-
-  useEffect(() => {
-    localStorage.setItem("nw_prayers", JSON.stringify(prayerRequests));
-  }, [prayerRequests]);
-
-  useEffect(() => {
-    localStorage.setItem("nw_visitors", JSON.stringify(visitorSignups));
-  }, [visitorSignups]);
-
-  useEffect(() => {
-    if (currentUser) {
-      localStorage.setItem("nw_user", JSON.stringify(currentUser));
-    } else {
-      localStorage.removeItem("nw_user");
-    }
-  }, [currentUser]);
-
-  // Methods to handle submits from Page components
-  const handleAddPrayerRequest = (req: Partial<PrayerRequest>) => {
-    const added: PrayerRequest = {
-      id: `p-${Date.now()}`,
-      name: req.name || "Anonymous Intercessor",
-      email: req.email || "anonymous@newwine.org",
-      request: req.request || "",
-      isPrivate: req.isPrivate ?? false,
-      dateSubmitted: new Date().toISOString().split("T")[0],
-      status: "pending"
-    };
-    setPrayerRequests([added, ...prayerRequests]);
-  };
-
-  const handleAddVisitorSignup = (vis: Partial<VisitorSignup>) => {
-    const added: VisitorSignup = {
-      id: `vis-${Date.now()}`,
-      name: vis.name || "Guest Visitor",
-      email: vis.email || "",
-      phone: vis.phone,
-      interestAreas: vis.interestAreas || [],
-      message: vis.message,
-      dateSubmitted: new Date().toISOString().split("T")[0]
-    };
-    setVisitorSignups([added, ...visitorSignups]);
-  };
-
-  // Give online state updater
-  const handleUpdateGivingAmount = (newAmount: number) => {
-    setConfig({
-      ...config,
-      givingCurrentAmount: newAmount
-    });
-  };
-
-  // Helper to record successful logins and initialize default settings
-  const recordSuccessfulLogin = (user: User) => {
-    // Generate new log entry
-    const newEntry: LoginHistoryEntry = {
-      id: `log-${Date.now()}`,
-      timestamp: new Date().toLocaleString(),
-      device: navigator.userAgent.includes("Mobile") ? "Mobile Device (Safari/Chrome)" : "Desktop Computer (WebKit/Blink)",
-      location: "San Jose, CA USA (IP Verified)",
-      status: "Success"
-    };
-
-    // Ensure they have default historical logs for realism if none exist
-    const historicalLogs = user.loginHistory || [
-      {
-        id: `log-prev-1`,
-        timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000).toLocaleString(),
-        device: "Desktop Browser (Chrome/Windows)",
-        location: "Dallas, TX USA",
-        status: "Success"
-      },
-      {
-        id: `log-prev-2`,
-        timestamp: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toLocaleString(),
-        device: "Mobile Smartphone (Safari/iOS)",
-        location: "Houston, TX USA",
-        status: "Success"
-      }
-    ];
-
-    const updatedHistory = [newEntry, ...historicalLogs];
-    
-    // Default cookie states if not defined
-    const cookiePrefs = user.cookiePreferences || {
-      essential: true,
-      analytics: false,
-      marketing: false
-    };
-
-    // Default notification states if not defined
-    const notificationPrefs = user.notificationPreferences || {
-      emailNewsletter: true,
-      emailSystemUpdates: true,
-      emailPrayerCircle: false,
-      pushWeeklyDevos: true,
-      pushSermonReleases: false
-    };
-
-    const updatedUser: User = {
-      ...user,
-      cookiePreferences: cookiePrefs,
-      notificationPreferences: notificationPrefs,
-      loginHistory: updatedHistory
-    };
-
-    // Update in registeredUsers list and local storage
-    setRegisteredUsers((prev) => {
-      const newList = prev.map((u) => u.username.toLowerCase() === user.username.toLowerCase() ? updatedUser : u);
-      localStorage.setItem("nw_users_list3", JSON.stringify(newList));
-      return newList;
-    });
-
-    // Update in session state
-    setCurrentUser(updatedUser);
-  };
-
-  // Perform client-side login using Username and Password
-  const handleLoginSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoginError(null);
-
-    const normUsername = loginUsername.trim().toLowerCase();
-    const foundUser = registeredUsers.find(
-      (u) => u.username.trim().toLowerCase() === normUsername
-    );
-
-    if (foundUser && foundUser.password === loginPassword) {
-      recordSuccessfulLogin(foundUser);
-      if (foundUser.role === "admin") {
-        setIsAdminEditMode(true); // Automatically turn on editing capabilities for Admin
-      } else {
-        setIsAdminEditMode(false);
-      }
-      setIsLoginModalOpen(false);
-      // Clean form inputs
-      setLoginUsername("");
-      setLoginPassword("");
-    } else {
-      setLoginError("Invalid Username or Password. Please try again.");
-    }
-  };
-
-  // Submit Sign Up Form
-  const handleSignUpSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setSignUpError(null);
-
-    // 1. Password minimum length check
-    if (signUpPassword.length < 8) {
-      setSignUpError("Password must be at least 8 characters minimum.");
-      return;
-    }
-
-    // 2. Username uniqueness check (case-insensitive)
-    const normUsername = signUpUsername.trim().toLowerCase();
-    const usernameExists = registeredUsers.some(
-      (u) => u.username.trim().toLowerCase() === normUsername
-    );
-
-    if (usernameExists) {
-      setSignUpError(`The username "${signUpUsername}" is already taken. Please try another one.`);
-      return;
-    }
-
-    // 3. Email format simple check
-    if (!signUpEmail.includes("@")) {
-      setSignUpError("Please enter a valid email address.");
-      return;
-    }
-
-    // 4. Generate verification code (6-digit)
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    setGeneratedCode(code);
-
-    // 5. Create pending user object
-    const newUser: User = {
-      username: signUpUsername.trim(),
-      role: "member", // Sign ups are always member accounts
-      email: signUpEmail.trim(),
-      firstName: signUpFirstName.trim(),
-      lastName: signUpLastName.trim(),
-      phone: signUpPhone.trim(),
-      password: signUpPassword,
-      cookiePreferences: {
-        essential: true,
-        analytics: false,
-        marketing: false
-      },
-      notificationPreferences: {
-        emailNewsletter: true,
-        emailSystemUpdates: true,
-        emailPrayerCircle: false,
-        pushWeeklyDevos: true,
-        pushSermonReleases: false
-      },
-      loginHistory: []
-    };
-
-    setPendingUser(newUser);
-    setIsVerificationStep(true);
-  };
-
-  // Submit Verification Code Form
-  const handleVerifyCodeSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setSignUpError(null);
-
-    if (userInputCode.trim() === generatedCode) {
-      // Success!
-      setVerificationSuccess(true);
-      if (pendingUser) {
-        // Add to registered users list
-        const updatedUsersList = [...registeredUsers, pendingUser];
-        setRegisteredUsers(updatedUsersList);
-        localStorage.setItem("nw_users_list3", JSON.stringify(updatedUsersList));
-
-        // Automatically log them in & record logging history!
-        recordSuccessfulLogin(pendingUser);
-        setIsAdminEditMode(false); // Members don't edit
-        
-        // Show success and close modal
-        setTimeout(() => {
-          setIsLoginModalOpen(false);
-          // Reset states
-          setIsSignUpMode(false);
-          setIsVerificationStep(false);
-          setPendingUser(null);
-          setGeneratedCode("");
-          setUserInputCode("");
-          setSignUpFirstName("");
-          setSignUpLastName("");
-          setSignUpPhone("");
-          setSignUpEmail("");
-          setSignUpUsername("");
-          setSignUpPassword("");
-          setVerificationSuccess(false);
-        }, 2200);
-      }
-    } else {
-      setSignUpError("Verification code is incorrect. Please double check the code provided above.");
-    }
-  };
-
-   // Open settings modal and prepopulate active fields
-  const handleOpenSettingsModal = () => {
-    if (currentUser) {
-      setSettingsFirstName(currentUser.firstName || "");
-      setSettingsLastName(currentUser.lastName || "");
-      setSettingsEmail(currentUser.email || "");
-      setSettingsPhone(currentUser.phone || "");
-      setSettingsProfilePic(currentUser.profilePic || "🕊️");
-      
-      setCookieAnalytics(currentUser.cookiePreferences?.analytics ?? false);
-      setCookieMarketing(currentUser.cookiePreferences?.marketing ?? false);
-
-      setNotifNewsletter(currentUser.notificationPreferences?.emailNewsletter ?? true);
-      setNotifSystemUpdates(currentUser.notificationPreferences?.emailSystemUpdates ?? true);
-      setNotifPrayerCircle(currentUser.notificationPreferences?.emailPrayerCircle ?? false);
-      setNotifWeeklyDevos(currentUser.notificationPreferences?.pushWeeklyDevos ?? true);
-      setNotifSermonReleases(currentUser.notificationPreferences?.pushSermonReleases ?? false);
-
-      setSettingsPassword("");
-      setSettingsConfirmPassword("");
-      setSecuritySuccessMsg(null);
-      setSecurityErrorMsg(null);
-      setProfileSuccessMsg(null);
-      setPrefsSuccessMsg(null);
-      setIsConfirmingDelete(false);
-      setSettingsActiveTab("profile");
-      setIsSettingsModalOpen(true);
-    }
-  };
-
-  // Action: Save profile info
-  const handleSaveProfile = (e: React.FormEvent) => {
-    e.preventDefault();
-    setProfileSuccessMsg(null);
-
-    if (!currentUser) return;
-
-    const updatedUser: User = {
-      ...currentUser,
-      firstName: settingsFirstName.trim(),
-      lastName: settingsLastName.trim(),
-      email: settingsEmail.trim(),
-      phone: settingsPhone.trim(),
-      profilePic: settingsProfilePic
-    };
-
-    setRegisteredUsers((prev) => {
-      const newList = prev.map((u) => u.username.toLowerCase() === currentUser.username.toLowerCase() ? updatedUser : u);
-      localStorage.setItem("nw_users_list3", JSON.stringify(newList));
-      return newList;
-    });
-    setCurrentUser(updatedUser);
-    setProfileSuccessMsg("Profile details updated successfully!");
-    setTimeout(() => setProfileSuccessMsg(null), 3000);
-  };
-
-  // Action: Save Password Update
-  const handleSavePassword = (e: React.FormEvent) => {
-    e.preventDefault();
-    setSecurityErrorMsg(null);
-    setSecuritySuccessMsg(null);
-
-    if (!currentUser) return;
-
-    if (settingsPassword.length < 8) {
-      setSecurityErrorMsg("Password must be at least 8 characters minimum.");
-      return;
-    }
-
-    if (settingsPassword !== settingsConfirmPassword) {
-      setSecurityErrorMsg("Passwords do not match.");
-      return;
-    }
-
-    const updatedUser: User = {
-      ...currentUser,
-      password: settingsPassword
-    };
-
-    setRegisteredUsers((prev) => {
-      const newList = prev.map((u) => u.username.toLowerCase() === currentUser.username.toLowerCase() ? updatedUser : u);
-      localStorage.setItem("nw_users_list3", JSON.stringify(newList));
-      return newList;
-    });
-    setCurrentUser(updatedUser);
-    setSettingsPassword("");
-    setSettingsConfirmPassword("");
-    setSecuritySuccessMsg("Password updated successfully!");
-    setTimeout(() => setSecuritySuccessMsg(null), 3500);
-  };
-
-  // Action: Save email settings and cookie updates 
-  const handleSavePreferences = (e: React.FormEvent) => {
-    e.preventDefault();
-    setPrefsSuccessMsg(null);
-
-    if (!currentUser) return;
-
-    const updatedUser: User = {
-      ...currentUser,
-      cookiePreferences: {
-        essential: true,
-        analytics: cookieAnalytics,
-        marketing: cookieMarketing
-      },
-      notificationPreferences: {
-        emailNewsletter: notifNewsletter,
-        emailSystemUpdates: notifSystemUpdates,
-        emailPrayerCircle: notifPrayerCircle,
-        pushWeeklyDevos: notifWeeklyDevos,
-        pushSermonReleases: notifSermonReleases
+        const hashSlug = window.location.hash.replace("#", "").trim();
+        if (hashSlug) {
+          const fromHash = state.published.pages.find((p) => p.slug === hashSlug || p.id === hashSlug);
+          if (fromHash) {
+            setActivePageId(fromHash.id);
+          }
+        } else {
+          setActivePageId(state.published.pages.find((p) => p.visible)?.id || state.published.pages[0]?.id || "page-home");
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to load CMS state.");
+      } finally {
+        setLoading(false);
       }
     };
 
-    setRegisteredUsers((prev) => {
-      const newList = prev.map((u) => u.username.toLowerCase() === currentUser.username.toLowerCase() ? updatedUser : u);
-      localStorage.setItem("nw_users_list3", JSON.stringify(newList));
-      return newList;
-    });
-    setCurrentUser(updatedUser);
-    setPrefsSuccessMsg("Preferences & privacy settings saved successfully!");
-    setTimeout(() => setPrefsSuccessMsg(null), 3000);
-  };
+    void load();
+  }, []);
 
-  // Action: Delete/Deactivate user account fully 
-  const executeAccountDeletion = () => {
-    if (!currentUser) return;
-    const userToDelete = currentUser.username;
-
-    // Filter out of registeredUsers
-    setRegisteredUsers((prev) => {
-      const filtered = prev.filter((u) => u.username.toLowerCase() !== userToDelete.toLowerCase());
-      localStorage.setItem("nw_users_list3", JSON.stringify(filtered));
-      return filtered;
-    });
-
-    // Logout and close modals
-    setCurrentUser(null);
-    setIsAdminEditMode(false);
-    setIsSettingsModalOpen(false);
-  };
-
-  // Action: Download personal JSON data profile 
-  const handleDownloadPersonalData = () => {
-    if (!currentUser) return;
-
-    const dataCopy = {
-      app: "We Are New Wine Portal",
-      timestamp: new Date().toISOString(),
-      profile: {
-        username: currentUser.username,
-        role: currentUser.role,
-        firstName: currentUser.firstName || "",
-        lastName: currentUser.lastName || "",
-        email: currentUser.email,
-        phone: currentUser.phone || ""
-      },
-      cookiePreferences: currentUser.cookiePreferences || {
-        essential: true,
-        analytics: false,
-        marketing: false
-      },
-      notificationPreferences: currentUser.notificationPreferences || {
-        emailNewsletter: true,
-        emailSystemUpdates: true,
-        emailPrayerCircle: false,
-        pushWeeklyDevos: true,
-        pushSermonReleases: false
-      },
-      loginHistory: currentUser.loginHistory || []
-    };
-
-    const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(
-      JSON.stringify(dataCopy, null, 2)
-    )}`;
-    
-    const downloadAnchor = document.createElement("a");
-    downloadAnchor.setAttribute("href", jsonString);
-    downloadAnchor.setAttribute("download", `newwine_data_${currentUser.username}.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
-  };
-
-  const handlePlanVisitSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!visitName || !visitDate) return;
-    
-    // Auto-record as visitor connect as well!
-    handleAddVisitorSignup({
-      name: visitName,
-      email: `${visitName.toLowerCase().replace(/\s+/g, "")}@example.com`,
-      interestAreas: ["general"],
-      message: `Planned Sunday visit on ${visitDate} during ${visitTime}.`
-    });
-
-    setVisitPlanSuccess(true);
-    setTimeout(() => {
-      setIsPlanVisitOpen(false);
-      setVisitPlanSuccess(false);
-      setVisitName("");
-      setVisitDate("");
-    }, 4500);
-  };
-
-  // Quick action to reset all custom database overrides back to default church templates
-  const handleResetToDefaults = () => {
-    if (confirm("Are you sure you want to restore the website back to its original default New Wine church template content? All visitor signups and prayer logs will be empty.")) {
-      setConfig(initialGeneralConfig);
-      setEvents(initialEvents);
-      setSermons(initialSermons);
-      setDevotionals(initialDevotionals);
-      setStaff(initialStaff);
-      setGallery(initialGallery);
-      setPrayerRequests([]);
-      setVisitorSignups([]);
-      setIsAdminEditMode(false);
-      setCurrentUser(null);
-      alert("Successfully restored defaults!");
+  const pushToHash = (pageId: string, content: SiteContent) => {
+    const page = content.pages.find((p) => p.id === pageId);
+    if (page) {
+      window.history.replaceState({}, "", `#${page.slug}`);
     }
   };
+
+  const persistDraft = async (draft: SiteContent, message: string) => {
+    try {
+      setSaving(true);
+      const next = await saveDraft(draft);
+      setCmsState(next);
+      setStatusMessage(message);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save draft.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const applyDraftMutation = (mutator: (draft: SiteContent) => void, message: string) => {
+    if (!cmsState) return;
+
+    const before = cloneContent(cmsState.draft);
+    const next = cloneContent(cmsState.draft);
+    mutator(next);
+    ensureNavigationMatchesPages(next);
+
+    setUndoStack((prev) => [...prev, before].slice(-100));
+    setRedoStack([]);
+
+    const optimistic: CMSState = {
+      ...cmsState,
+      draft: next,
+      updatedAt: new Date().toISOString(),
+    };
+    setCmsState(optimistic);
+    void persistDraft(next, message);
+  };
+
+  const handleUndo = () => {
+    if (!cmsState || undoStack.length === 0) return;
+    const previous = undoStack[undoStack.length - 1];
+    setUndoStack((prev) => prev.slice(0, -1));
+    setRedoStack((prev) => [...prev, cloneContent(cmsState.draft)].slice(-100));
+    const next = { ...cmsState, draft: cloneContent(previous), updatedAt: new Date().toISOString() };
+    setCmsState(next);
+    void persistDraft(next.draft, "Undo complete");
+  };
+
+  const handleRedo = () => {
+    if (!cmsState || redoStack.length === 0) return;
+    const nextDraft = redoStack[redoStack.length - 1];
+    setRedoStack((prev) => prev.slice(0, -1));
+    setUndoStack((prev) => [...prev, cloneContent(cmsState.draft)].slice(-100));
+    const next = { ...cmsState, draft: cloneContent(nextDraft), updatedAt: new Date().toISOString() };
+    setCmsState(next);
+    void persistDraft(next.draft, "Redo complete");
+  };
+
+  const handlePublish = async () => {
+    if (!cmsState) return;
+    try {
+      setSaving(true);
+      const next = await publishDraft(`Publish ${new Date().toLocaleString()}`);
+      setCmsState(next);
+      setStatusMessage("Published to live site");
+      setPreviewMode(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Publish failed.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const currentPage = displayContent.pages.find((p) => p.id === activePageId) || displayContent.pages[0];
+
+  useEffect(() => {
+    if (currentPage) {
+      pushToHash(currentPage.id, displayContent);
+    }
+  }, [currentPage?.id, displayContent]);
+
+  const selectedSection = useMemo(() => {
+    if (!selectedSectionId || !cmsState) return null;
+    return findSection(cmsState.draft, activePageId, selectedSectionId) || null;
+  }, [cmsState, activePageId, selectedSectionId]);
+
+  const updateSectionPath = (path: string[], value: unknown) => {
+    if (!selectedSectionId) return;
+    applyDraftMutation((draft) => {
+      const section = findSection(draft, activePageId, selectedSectionId);
+      if (!section) return;
+      section.content = updateNestedValue(section.content, path, value);
+    }, "Section updated");
+  };
+
+  const updateSectionStyle = (path: string[], value: unknown) => {
+    if (!selectedSectionId) return;
+    applyDraftMutation((draft) => {
+      const section = findSection(draft, activePageId, selectedSectionId);
+      if (!section) return;
+      section.style = updateNestedValue(section.style as unknown as Record<string, unknown>, path, value) as unknown as SectionModel["style"];
+    }, "Section style updated");
+  };
+
+  const updateThemePath = (path: string[], value: unknown) => {
+    applyDraftMutation((draft) => {
+      draft.theme = updateNestedValue(draft.theme as unknown as Record<string, unknown>, path, value) as unknown as SiteContent["theme"];
+    }, "Theme saved");
+  };
+
+  const movePage = (from: number, to: number) => {
+    applyDraftMutation((draft) => {
+      draft.pages = reorder(draft.pages, from, to);
+    }, "Page order updated");
+  };
+
+  const moveSection = (from: number, to: number) => {
+    applyDraftMutation((draft) => {
+      const page = findPage(draft, activePageId);
+      if (!page) return;
+      page.sections = reorder(page.sections, from, to);
+    }, "Section order updated");
+  };
+
+  const handleMediaUpload = async (file: File) => {
+    try {
+      setSaving(true);
+      const uploaded = await uploadMedia(file);
+      applyDraftMutation((draft) => {
+        draft.mediaLibrary.unshift({
+          id: uid("media"),
+          name: uploaded.name,
+          type: uploaded.type as MediaItem["type"],
+          url: uploaded.url,
+          uploadedAt: new Date().toISOString(),
+        });
+      }, "Media uploaded");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Media upload failed.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRestoreVersion = async (versionId: string) => {
+    try {
+      setSaving(true);
+      const next = await restoreVersion(versionId);
+      setCmsState(next);
+      setStatusMessage("Version restored to draft");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to restore version.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleResetSection = async () => {
+    if (!selectedSectionId) return;
+    try {
+      setSaving(true);
+      const next = await resetSection(activePageId, selectedSectionId);
+      setCmsState(next);
+      setStatusMessage("Section reset to published version");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to reset section.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="min-h-screen bg-brand-bg text-white p-8">Loading CMS workspace...</div>;
+  }
 
   return (
-    <div className="bg-brand-bg min-h-screen text-brand-dark flex flex-col justify-between selection:bg-brand-beige selection:text-brand-dark font-sans">
-      
-
-
-      {/* Main App Navigation Bar */}
-      <Navbar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        currentUser={currentUser}
-        setCurrentUser={setCurrentUser}
-        isAdminEditMode={isAdminEditMode}
-        setIsAdminEditMode={setIsAdminEditMode}
-        onOpenLoginModal={() => setIsLoginModalOpen(true)}
-        onOpenSettingsModal={handleOpenSettingsModal}
-      />
-
-      {/* Page Content Display Area */}
-      <main id="main-content-display" className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 w-full">
-        {/* Render Page based on Tab ID */}
-        {activeTab === "home" && (
-          <HomeView
-            config={config}
-            sermons={sermons}
-            devotionals={devotionals}
-            events={events}
-            setActiveTab={setActiveTab}
-            onOpenPlanVisit={() => setIsPlanVisitOpen(true)}
-          />
-        )}
-
-        {activeTab === "about" && (
-          <AboutView config={config} staff={staff} gallery={gallery} />
-        )}
-
-        {activeTab === "visit" && (
-          <VisitView config={config} onOpenPlanVisit={() => setIsPlanVisitOpen(true)} />
-        )}
-
-        {activeTab === "events" && (
-          <EventsView events={events} />
-        )}
-
-        {activeTab === "give" && (
-          <GiveView config={config} setGivingAmount={handleUpdateGivingAmount} />
-        )}
-
-        {activeTab === "contact" && (
-          <ContactView
-            config={config}
-            onSubmitPrayer={handleAddPrayerRequest}
-            onSubmitSignup={handleAddVisitorSignup}
-          />
-        )}
-
-        {/* Central CMS Administration Panel - Automatically shown below the content if editing mode is toggled on! */}
-        {isAdminEditMode && (
-          <div id="cms-anchor-point" className="mt-20 pt-10 border-t-2 border-dashed border-stone-200">
-            <div className="bg-amber-50 rounded-lg p-4 border border-amber-200 text-stone-800 text-xs mb-6 flex justify-between items-center">
-              <div>
-                <strong>⚙️ Real-Time Administrator Control Board Active!</strong>
-                <p className="text-stone-605 mt-0.5">Use the registry tables below to instantly add, override, or strike database values such as schedule logs, sermons, devotionals, and visitors signups sync copies.</p>
-              </div>
-              <button
-                id="btn-close-edit-mode-top"
-                onClick={() => setIsAdminEditMode(false)}
-                className="bg-stone-900 text-white hover:bg-stone-850 px-3 py-1.5 font-bold uppercase tracking-wider rounded text-[10px]"
-              >
-                Close Control Panel
-              </button>
-            </div>
-
-            <CMSDashboard
-              config={config}
-              setConfig={setConfig}
-              events={events}
-              setEvents={setEvents}
-              sermons={sermons}
-              setSermons={setSermons}
-              devotionals={devotionals}
-              setDevotionals={setDevotionals}
-              staff={staff}
-              setStaff={setStaff}
-              prayerRequests={prayerRequests}
-              setPrayerRequests={setPrayerRequests}
-              visitorSignups={visitorSignups}
-              setVisitorSignups={setVisitorSignups}
-            />
-          </div>
-        )}
-      </main>
-
-      {/* Main Footer Component */}
-      <Footer config={config} setActiveTab={setActiveTab} />
-
-      {/* ==========================================
-          MEMBER SIGN IN / REGISTRATION MODAL
-          ========================================== */}
-      {isLoginModalOpen && (
-        <div id="auth-modal-overlay" className="fixed inset-0 z-50 bg-[#1A1A1A]/80 backdrop-blur-xs flex items-center justify-center p-4">
-          <div 
-            id="auth-modal-dialog" 
-            className={`bg-white rounded-none border border-brand-border shadow-none w-full overflow-hidden transition-all duration-300 animate-scale-up text-left ${
-              isSignUpMode && !isVerificationStep ? "max-w-md md:max-w-lg" : "max-w-md"
-            }`}
-          >
-            <div className="bg-brand-dark p-6 text-white flex justify-between items-center border-b border-[#2C2C2C]">
-              <div className="flex items-center gap-2">
-                <Church className="w-5 h-5 text-brand-sage" />
-                <span className="font-serif font-light text-base tracking-tight text-brand-beige">
-                  {!isSignUpMode 
-                    ? "Member Portal & Admin Sign In" 
-                    : isVerificationStep 
-                      ? "Verify Your Email Address" 
-                      : "Create Member Account"
-                  }
-                </span>
-              </div>
-              <button
-                id="btn-close-login-modal"
-                onClick={() => {
-                  setIsLoginModalOpen(false);
-                  setIsSignUpMode(false);
-                  setIsVerificationStep(false);
-                  setLoginError(null);
-                  setSignUpError(null);
-                }}
-                className="text-[#8C8C8C] hover:text-white transition-colors cursor-pointer bg-transparent border-0"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* CASE 1: NOT SIGN UP MODE - STANDARD LOGIN */}
-            {!isSignUpMode ? (
-              <form onSubmit={handleLoginSubmit} id="modal-form-login" className="p-6 space-y-4 font-light">
-                <div className="bg-brand-beige p-4 rounded-none border border-[#E5E2DA] text-xs text-brand-dark leading-relaxed">
-                  <strong>💡 Guest &amp; Admin Sign In Credentials:</strong>
-                  <p className="mt-1 font-mono text-[10.5px]">
-                    &bull; Admin Username: <code className="font-bold">CherishAgusionu</code> &bull; Password: <code className="font-bold">Cherish12345</code>
-                  </p>
-                  <p className="mt-1 font-mono text-[10.5px]">
-                    &bull; Default Member: <code className="font-bold">member</code> &bull; Password: <code className="font-bold">fellowship</code>
-                  </p>
-                </div>
-
-                {loginError && (
-                  <div className="bg-[#FFECEC] text-[#801010] rounded-none p-3 text-xs border border-[#F0D0D0] font-mono">
-                    ⚠ {loginError}
-                  </div>
-                )}
-
-                <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-[#8A8A8A] uppercase tracking-wider font-mono">Username *</label>
-                  <input
-                    type="text"
-                    required
-                    value={loginUsername}
-                    onChange={(e) => setLoginUsername(e.target.value)}
-                    className="w-full text-xs p-3 bg-brand-bg rounded-none border border-brand-border text-brand-dark tracking-wide font-mono focus:outline-none focus:border-brand-sage"
-                    placeholder="e.g. admin or member"
-                    id="login-form-username"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-[#8A8A8A] uppercase tracking-wider font-mono">Password *</label>
-                  <input
-                    type="password"
-                    required
-                    value={loginPassword}
-                    onChange={(e) => setLoginPassword(e.target.value)}
-                    className="w-full text-xs p-3 bg-brand-bg rounded-none border border-brand-border text-brand-dark tracking-wide font-mono focus:outline-none focus:border-brand-sage"
-                    placeholder="Enter your password"
-                    id="login-form-passwd"
-                  />
-                </div>
-
-                <button
-                  id="btn-login-modal-submit"
-                  type="submit"
-                  className="w-full bg-brand-dark hover:bg-black text-white font-mono text-xs font-bold uppercase tracking-widest py-4 border border-brand-dark rounded-none cursor-pointer transition-all mt-2"
-                >
-                  Log In
-                </button>
-
-                <div className="text-center pt-2 border-t border-brand-border/40 mt-4">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsSignUpMode(true);
-                      setSignUpError(null);
-                    }}
-                    className="text-xs font-semibold text-brand-sage hover:text-brand-dark transition-colors cursor-pointer bg-transparent border-0 underline uppercase tracking-wider"
-                  >
-                    Don't have an account? Sign Up
-                  </button>
-                </div>
-              </form>
+    <div
+      className="min-h-screen"
+      style={{
+        background: draftContent.theme.backgroundImage
+          ? `linear-gradient(${draftContent.theme.colors.overlayColor}, ${draftContent.theme.colors.overlayColor}), url(${draftContent.theme.backgroundImage}) center/cover fixed`
+          : draftContent.theme.colors.backgroundColor,
+      }}
+    >
+      <header className="border-b border-[#2f2b21] sticky top-0 z-40" style={{ background: displayContent.theme.colors.navigationColor }}>
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            {displayContent.theme.logo ? (
+              <img src={displayContent.theme.logo} alt="Logo" className="w-10 h-10 object-cover border border-[#4f4738]" />
             ) : (
-              /* CASE 2: SIGN UP MODE - REGISTER & VERIFICATION */
-              <div className="p-6">
-                {signUpError && (
-                  <div className="bg-[#FFECEC] text-[#801010] rounded-none p-3 text-xs border border-[#F0D0D0] font-mono mb-4">
-                    ⚠ {signUpError}
-                  </div>
-                )}
-
-                {/* SUB-CASE 2A: REGISTRATION FORM */}
-                {!isVerificationStep ? (
-                  <form onSubmit={handleSignUpSubmit} id="modal-form-signup" className="space-y-4 font-light">
-                    <p className="text-stone-500 text-xs mb-4 leading-relaxed">
-                      Register a member account to join the New Wine family and track updates.
-                    </p>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <label className="block text-[10px] font-bold text-[#8A8A8A] uppercase tracking-wider font-mono">First Name *</label>
-                        <input
-                          type="text"
-                          required
-                          value={signUpFirstName}
-                          onChange={(e) => setSignUpFirstName(e.target.value)}
-                          className="w-full text-xs p-3 bg-brand-bg rounded-none border border-brand-border text-brand-dark tracking-wide focus:outline-none focus:border-brand-sage"
-                          placeholder="First Name"
-                          id="signup-first-name"
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="block text-[10px] font-bold text-[#8A8A8A] uppercase tracking-wider font-mono">Last Name *</label>
-                        <input
-                          type="text"
-                          required
-                          value={signUpLastName}
-                          onChange={(e) => setSignUpLastName(e.target.value)}
-                          className="w-full text-xs p-3 bg-brand-bg rounded-none border border-brand-border text-brand-dark tracking-wide focus:outline-none focus:border-brand-sage"
-                          placeholder="Last Name"
-                          id="signup-last-name"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <label className="block text-[10px] font-bold text-[#8A8A8A] uppercase tracking-wider font-mono">Phone Number *</label>
-                        <input
-                          type="tel"
-                          required
-                          value={signUpPhone}
-                          onChange={(e) => setSignUpPhone(e.target.value)}
-                          className="w-full text-xs p-3 bg-brand-bg rounded-none border border-brand-border text-brand-dark tracking-wide focus:outline-none focus:border-brand-sage"
-                          placeholder="e.g. 123-456-7890"
-                          id="signup-phone"
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="block text-[10px] font-bold text-[#8A8A8A] uppercase tracking-wider font-mono">Email Address *</label>
-                        <input
-                          type="email"
-                          required
-                          value={signUpEmail}
-                          onChange={(e) => setSignUpEmail(e.target.value)}
-                          className="w-full text-xs p-3 bg-brand-bg rounded-none border border-brand-border text-brand-dark tracking-wide focus:outline-none focus:border-brand-sage"
-                          placeholder="e.g. name@email.com"
-                          id="signup-email"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <div className="flex justify-between">
-                          <label className="block text-[10px] font-bold text-[#8A8A8A] uppercase tracking-wider font-mono">Username *</label>
-                          <span className="text-[9px] text-[#A6A299] font-mono italic">unique</span>
-                        </div>
-                        <input
-                          type="text"
-                          required
-                          value={signUpUsername}
-                          onChange={(e) => setSignUpUsername(e.target.value)}
-                          className="w-full text-xs p-3 bg-brand-bg rounded-none border border-brand-border text-brand-dark tracking-wide font-mono focus:outline-none focus:border-brand-sage"
-                          placeholder="Create username"
-                          id="signup-username"
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <div className="flex justify-between">
-                          <label className="block text-[10px] font-bold text-[#8A8A8A] uppercase tracking-wider font-mono">Password *</label>
-                          <span className="text-[9px] text-red-500 font-mono">(min 8 chars)</span>
-                        </div>
-                        <input
-                          type="password"
-                          required
-                          minLength={8}
-                          value={signUpPassword}
-                          onChange={(e) => setSignUpPassword(e.target.value)}
-                          className={`w-full text-xs p-3 bg-brand-bg rounded-none border text-brand-dark tracking-wide focus:outline-none ${
-                            signUpPassword && signUpPassword.length < 8 ? "border-red-400 focus:border-red-400" : "border-brand-border focus:border-brand-sage"
-                          }`}
-                          placeholder="At least 8 characters"
-                          id="signup-password"
-                        />
-                      </div>
-                    </div>
-
-                    <button
-                      id="btn-signup-submit"
-                      type="submit"
-                      className="w-full bg-brand-sage hover:bg-brand-sage-dark text-white font-mono text-xs font-bold uppercase tracking-widest py-4 rounded-none cursor-pointer transition-all mt-4"
-                    >
-                      Create Account &amp; Verify Email
-                    </button>
-
-                    <div className="text-center pt-2 border-t border-brand-border/40 mt-4">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsSignUpMode(false);
-                          setSignUpError(null);
-                        }}
-                        className="text-xs font-semibold text-brand-dark hover:text-brand-sage transition-colors cursor-pointer bg-transparent border-0 underline uppercase tracking-wider"
-                      >
-                        Already have an account? Back to Login
-                      </button>
-                    </div>
-                  </form>
-                ) : (
-                  /* SUB-CASE 2B: EMAIL VERIFICATION STEP */
-                  <form onSubmit={handleVerifyCodeSubmit} id="modal-form-verification" className="space-y-4 font-light">
-                    {/* Simulated inbox notification */}
-                    <div className="bg-[#EBF5EE] text-[#1E5D32] rounded-none p-4 border border-[#D5EAD2] text-xs font-mono select-all select-none">
-                      <div className="flex items-center gap-1 font-bold uppercase tracking-wider mb-1.5">
-                        <Info className="w-3.5 h-3.5" />
-                        <span>Simulation Email Delivery</span>
-                      </div>
-                      <p className="leading-relaxed">
-                        To: <span className="font-bold underline">{signUpEmail}</span>
-                        <br />
-                        Verification Security OTP: <span className="text-sm font-bold bg-[#D3EED0] px-2 py-0.5 rounded-sm select-all tracking-wider text-black">{generatedCode}</span>
-                      </p>
-                    </div>
-
-                    <p className="text-stone-500 text-xs leading-relaxed">
-                      Please enter the 6-digit verification code sent to your registered email above to verify your account credentials.
-                    </p>
-
-                    <div className="space-y-2">
-                      <label className="block text-[10px] font-bold text-[#8A8A8A] uppercase tracking-wider font-mono">Verification Code *</label>
-                      <input
-                        type="text"
-                        required
-                        maxLength={6}
-                        value={userInputCode}
-                        onChange={(e) => setUserInputCode(e.target.value)}
-                        className="w-full text-center text-lg tracking-[0.4em] font-mono p-3 bg-brand-bg rounded-none border border-brand-border text-brand-dark focus:outline-none focus:border-brand-sage"
-                        placeholder="e.g. 123456"
-                        id="verification-code-input"
-                      />
-                    </div>
-
-                    {verificationSuccess && (
-                      <div className="bg-[#E8F8F5] text-[#117864] text-xs p-3 font-mono border border-[#D1F2EB] flex items-center gap-2">
-                        <Sparkles className="w-4 h-4 text-[#117864]" />
-                        <span>✨ Account activated! Welcome, {pendingUser?.firstName}! Logging you in...</span>
-                      </div>
-                    )}
-
-                    <div className="flex gap-3 pt-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsVerificationStep(false);
-                          setUserInputCode("");
-                          setSignUpError(null);
-                        }}
-                        className="w-1/3 text-xs py-3 border border-[#CCCCCC] font-mono font-bold uppercase tracking-wider hover:bg-stone-50 cursor-pointer bg-white text-[#5A5A5A]"
-                      >
-                        Back
-                      </button>
-
-                      <button
-                        id="btn-verify-submit"
-                        type="submit"
-                        disabled={verificationSuccess}
-                        className="w-2/3 bg-brand-dark hover:bg-black text-white font-mono text-xs font-bold uppercase tracking-widest py-3 border border-brand-dark rounded-none cursor-pointer transition-all flex items-center justify-center gap-2 disabled:bg-stone-400 disabled:border-stone-400"
-                      >
-                        Confirm Verification
-                      </button>
-                    </div>
-                  </form>
-                )}
-              </div>
+              <div className="w-10 h-10 border border-[#4f4738] grid place-items-center text-xs text-[#d9b24c]">NW</div>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* ==========================================
-          ACCOUNT SETTINGS & PREFERENCES MODAL
-          ========================================== */}
-      {isSettingsModalOpen && currentUser && (
-        <div id="settings-modal-overlay" className="fixed inset-0 z-50 bg-[#1A1A1A]/85 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div id="settings-modal-dialog" className="bg-white rounded-none border border-brand-border shadow-2xl max-w-4xl w-full flex flex-col md:flex-row h-auto md:h-[620px] overflow-hidden animate-scale-up text-left">
-            
-            {/* Modal Navigation Sidebar */}
-            <div className="w-full md:w-64 bg-brand-dark p-6 text-white flex flex-col justify-between border-r border-[#2C2C2C]">
-              <div>
-                <div className="flex items-center gap-2 mb-8 pb-4 border-b border-stone-800">
-                  <Sliders className="w-5 h-5 text-brand-sage" />
-                  <div>
-                    <h3 className="font-serif font-light text-base text-brand-beige leading-tight">Account Settings</h3>
-                    <p className="text-[9px] text-[#8C8C8C] font-mono uppercase tracking-wider">{currentUser.username}</p>
-                  </div>
-                </div>
-
-                <nav className="space-y-1" id="settings-tabs-nav">
-                  <button
-                    id="tab-btn-profile"
-                    onClick={() => {
-                      setSettingsActiveTab("profile");
-                      setProfileSuccessMsg(null);
-                    }}
-                    className={`w-full flex items-center gap-3 px-3 py-3 text-left transition-all font-mono text-[11px] uppercase tracking-wider rounded-none cursor-pointer border-l-2 ${
-                      settingsActiveTab === "profile"
-                        ? "bg-[#292929] text-brand-beige border-brand-sage font-bold"
-                        : "text-[#8C8C8C] hover:text-white hover:bg-[#202020] border-transparent"
-                    }`}
-                  >
-                    <UserIcon className="w-4 h-4" />
-                    <span>Profile &amp; Details</span>
-                  </button>
-
-                  <button
-                    id="tab-btn-security"
-                    onClick={() => {
-                      setSettingsActiveTab("security");
-                      setSecuritySuccessMsg(null);
-                      setSecurityErrorMsg(null);
-                    }}
-                    className={`w-full flex items-center gap-3 px-3 py-3 text-left transition-all font-mono text-[11px] uppercase tracking-wider rounded-none cursor-pointer border-l-2 ${
-                      settingsActiveTab === "security"
-                        ? "bg-[#292929] text-brand-beige border-brand-sage font-bold"
-                        : "text-[#8C8C8C] hover:text-white hover:bg-[#202020] border-transparent"
-                    }`}
-                  >
-                    <Shield className="w-4 h-4" />
-                    <span>Security &amp; Privacy</span>
-                  </button>
-
-                  <button
-                    id="tab-btn-notifications"
-                    onClick={() => {
-                      setSettingsActiveTab("notifications");
-                      setPrefsSuccessMsg(null);
-                    }}
-                    className={`w-full flex items-center gap-3 px-3 py-3 text-left transition-all font-mono text-[11px] uppercase tracking-wider rounded-none cursor-pointer border-l-2 ${
-                      settingsActiveTab === "notifications"
-                        ? "bg-[#292929] text-brand-beige border-brand-sage font-bold"
-                        : "text-[#8C8C8C] hover:text-white hover:bg-[#202020] border-transparent"
-                    }`}
-                  >
-                    <Bell className="w-4 h-4" />
-                    <span>Notifications</span>
-                  </button>
-
-                  <button
-                    id="tab-btn-management"
-                    onClick={() => {
-                      setSettingsActiveTab("management");
-                      setIsConfirmingDelete(false);
-                    }}
-                    className={`w-full flex items-center gap-3 px-3 py-3 text-left transition-all font-mono text-[11px] uppercase tracking-wider rounded-none cursor-pointer border-l-2 ${
-                      settingsActiveTab === "management"
-                        ? "bg-[#292929] text-brand-beige border-brand-sage font-bold"
-                        : "text-[#8C8C8C] hover:text-white hover:bg-[#202020] border-transparent"
-                    }`}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    <span>Account Admin</span>
-                  </button>
-                </nav>
+            <div>
+              <div className="text-lg font-semibold" style={{ color: displayContent.theme.colors.textColor }}>
+                {displayContent.siteTitle}
               </div>
-
-              {/* Close / Return to Site CTA */}
-              <button
-                id="btn-settings-close-left"
-                onClick={() => setIsSettingsModalOpen(false)}
-                className="mt-8 md:mt-0 w-full py-2.5 bg-brand-sage hover:bg-brand-sage-dark text-white font-mono text-[10px] uppercase font-bold tracking-widest cursor-pointer text-center select-none"
-              >
-                Close Settings
-              </button>
+              <div className="text-[11px] uppercase tracking-widest text-[#b8ad96]">{displayContent.menuTitle}</div>
             </div>
+          </div>
 
-            {/* Active Content Display Column */}
-            <div className="flex-1 flex flex-col bg-white overflow-hidden">
-              <div className="p-6 border-b border-stone-100 flex justify-between items-center bg-brand-bg">
-                <div>
-                  <h4 className="font-serif font-light text-lg text-brand-dark font-medium">
-                    {settingsActiveTab === "profile" && "Profile & Personal Details"}
-                    {settingsActiveTab === "security" && "Security & Privacy"}
-                    {settingsActiveTab === "notifications" && "Notifications & Communications"}
-                    {settingsActiveTab === "management" && "Account Management"}
-                  </h4>
-                  <p className="text-[11px] text-stone-500 mt-0.5 leading-relaxed">
-                    {settingsActiveTab === "profile" && "Update your name and contact information."}
-                    {settingsActiveTab === "security" && "Change your password, and manage cookie preferences."}
-                    {settingsActiveTab === "notifications" && "Adjust email preferences, and push notifications."}
-                    {settingsActiveTab === "management" && "Delete, deactivate, or download a copy of your personal data."}
-                  </p>
-                </div>
+          <nav className="hidden md:flex gap-2 flex-wrap">
+            {displayContent.navigation
+              .filter((item) => item.visible)
+              .map((item) => (
                 <button
-                  id="btn-close-settings-modal-top"
-                  onClick={() => setIsSettingsModalOpen(false)}
-                  className="p-2 text-stone-400 hover:text-stone-950 transition-colors cursor-pointer"
+                  key={item.id}
+                  onClick={() => {
+                    if (item.type === "external" && item.url) {
+                      window.open(item.url, "_blank", "noopener,noreferrer");
+                      return;
+                    }
+                    if (item.pageId) {
+                      setActivePageId(item.pageId);
+                    }
+                  }}
+                  className={`px-3 py-2 text-xs uppercase tracking-wider border transition-colors ${
+                    item.pageId === activePageId ? "bg-[#d9b24c] text-black border-[#d9b24c]" : "text-[#f0e8da] border-[#443f33]"
+                  }`}
                 >
-                  <X className="w-5 h-5" />
+                  {item.label}
                 </button>
-              </div>
+              ))}
+          </nav>
 
-              <div className="flex-1 p-6 overflow-y-auto font-sans text-xs text-stone-700 space-y-6">
-                
-                {/* 1. PROFILE DETAILS TAB */}
-                {settingsActiveTab === "profile" && (
-                  <form onSubmit={handleSaveProfile} className="space-y-5" id="form-settings-profile">
-                    
-                    {/* NAMES ROW */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <label className="block text-[10px] uppercase font-bold text-stone-500 tracking-wider font-mono">First Name *</label>
-                        <input
-                          type="text"
-                          required
-                          value={settingsFirstName}
-                          onChange={(e) => setSettingsFirstName(e.target.value)}
-                          className="w-full p-3 bg-brand-bg rounded-none border border-brand-border font-sans focus:outline-none focus:border-brand-sage text-stone-800"
-                          id="settings-first-name"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="block text-[10px] uppercase font-bold text-stone-500 tracking-wider font-mono">Last Name *</label>
-                        <input
-                          type="text"
-                          required
-                          value={settingsLastName}
-                          onChange={(e) => setSettingsLastName(e.target.value)}
-                          className="w-full p-3 bg-brand-bg rounded-none border border-brand-border font-sans focus:outline-none focus:border-brand-sage text-stone-800"
-                          id="settings-last-name"
-                        />
-                      </div>
-                    </div>
-
-                    {/* CONTACT ROW */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <label className="block text-[10px] uppercase font-bold text-stone-500 tracking-wider font-mono">Email Address *</label>
-                        <input
-                          type="email"
-                          required
-                          value={settingsEmail}
-                          onChange={(e) => setSettingsEmail(e.target.value)}
-                          className="w-full p-3 bg-brand-bg rounded-none border border-brand-border font-sans focus:outline-none focus:border-brand-sage text-stone-800"
-                          id="settings-email"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="block text-[10px] uppercase font-bold text-stone-500 tracking-wider font-mono">Phone Number *</label>
-                        <input
-                          type="tel"
-                          required
-                          value={settingsPhone}
-                          onChange={(e) => setSettingsPhone(e.target.value)}
-                          className="w-full p-3 bg-brand-bg rounded-none border border-brand-border font-sans focus:outline-none focus:border-brand-sage text-stone-800"
-                          placeholder="123-456-7890"
-                          id="settings-phone"
-                        />
-                      </div>
-                    </div>
-
-                    {profileSuccessMsg && (
-                      <div className="p-3 bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-2 font-mono text-[11px] animate-fade-in">
-                        <CheckCircle className="w-4 h-4 text-emerald-600" />
-                        <span>{profileSuccessMsg}</span>
-                      </div>
-                    )}
-
-                    <button
-                      type="submit"
-                      id="settings-profile-submit-btn"
-                      className="bg-brand-sage hover:bg-brand-sage-dark text-white font-mono text-xs font-bold uppercase tracking-widest px-6 py-3.5 rounded-none cursor-pointer transition-all shadow-sm"
-                    >
-                      Save Profile Details
-                    </button>
-                  </form>
-                )}
-
-                {/* 2. SECURITY & PRIVACY TAB */}
-                {settingsActiveTab === "security" && (
-                  <div className="space-y-6 animate-fade-in">
-                    {/* Password Update Form */}
-                    <form onSubmit={handleSavePassword} className="space-y-4 pb-6 border-b border-stone-100">
-                      <h5 className="text-xs uppercase font-bold text-stone-800 tracking-wider font-mono">Change Account Password</h5>
-                      
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                          <label className="block text-[10px] uppercase font-bold text-stone-500 tracking-wider font-mono">New Passphrase *</label>
-                          <input
-                            type="password"
-                            required
-                            minLength={8}
-                            value={settingsPassword}
-                            onChange={(e) => setSettingsPassword(e.target.value)}
-                            placeholder="At least 8 characters"
-                            className="w-full p-3 bg-brand-bg rounded-none border border-brand-border text-xs focus:outline-none focus:border-brand-sage text-stone-800 font-mono"
-                          />
-                        </div>
-                        
-                        <div className="space-y-1">
-                          <label className="block text-[10px] uppercase font-bold text-stone-500 tracking-wider font-mono">Confirm Passphrase *</label>
-                          <input
-                            type="password"
-                            required
-                            minLength={8}
-                            value={settingsConfirmPassword}
-                            onChange={(e) => setSettingsConfirmPassword(e.target.value)}
-                            placeholder="At least 8 characters"
-                            className="w-full p-3 bg-brand-bg rounded-none border border-brand-border text-xs focus:outline-none focus:border-brand-sage text-stone-800 font-mono"
-                          />
-                        </div>
-                      </div>
-
-                      {securityErrorMsg && (
-                        <div className="p-3 bg-red-50 text-red-700 border border-red-200 font-mono text-[11px]">
-                          ⚠ {securityErrorMsg}
-                        </div>
-                      )}
-
-                      {securitySuccessMsg && (
-                        <div className="p-3 bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-2 font-mono text-[11px]">
-                          <CheckCircle className="w-4 h-4 text-emerald-600" />
-                          <span>{securitySuccessMsg}</span>
-                        </div>
-                      )}
-
-                      <button
-                        type="submit"
-                        className="bg-brand-dark hover:bg-black text-white font-mono text-xs font-bold uppercase tracking-widest px-6 py-3 border border-brand-dark rounded-none cursor-pointer transition-all"
-                      >
-                        Update Credentials
-                      </button>
-                    </form>
-
-                    {/* Cookie Consent Settings */}
-                    <form onSubmit={handleSavePreferences} className="space-y-4">
-                      <h5 className="text-xs uppercase font-bold text-stone-800 tracking-wider font-mono">Manage Cookie Preferences</h5>
-                      <span className="text-[10px] text-stone-500 block leading-normal">
-                        Control how cookie details tracking mechanisms are initialized on your local browser:
-                      </span>
-
-                      <div className="space-y-3 bg-brand-bg p-4 border border-brand-border">
-                        {/* Essential Cookies */}
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="space-y-0.5">
-                            <span className="font-bold text-stone-800 text-[11px] uppercase font-mono tracking-wide leading-none block">1. Essential Application Session Keys (Required)</span>
-                            <p className="text-[10px] text-stone-500 leading-normal">
-                              Required to authenticate member portal identities, persist localStorage tokens, and protect secure page transitions.
-                            </p>
-                          </div>
-                          <span className="text-[10px] font-mono font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1">ALWAYS ON</span>
-                        </div>
-
-                        {/* Analytics Cookies */}
-                        <div className="flex items-start justify-between gap-4 pt-3 border-t border-brand-border/40">
-                          <div className="space-y-0.5">
-                            <span className="font-bold text-stone-800 text-[11px] uppercase font-mono tracking-wide leading-none block">2. Performance &amp; Analytics Analytics Cookies</span>
-                            <p className="text-[10px] text-stone-500 leading-normal">
-                              Allows tracking page traffic stats, most-read devos columns, and loading times to measure technical health.
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setCookieAnalytics(!cookieAnalytics)}
-                            className={`px-3 py-1 text-[10px] font-bold font-mono transition-colors rounded-none cursor-pointer uppercase ${
-                              cookieAnalytics
-                                ? "bg-brand-sage text-white font-bold"
-                                : "bg-stone-200 text-stone-600 hover:bg-stone-300"
-                            }`}
-                          >
-                            {cookieAnalytics ? "Enabled" : "Disabled"}
-                          </button>
-                        </div>
-
-                        {/* Marketing Cookies */}
-                        <div className="flex items-start justify-between gap-4 pt-3 border-t border-brand-border/40">
-                          <div className="space-y-0.5">
-                            <span className="font-bold text-stone-800 text-[11px] uppercase font-mono tracking-wide leading-none block">3. Marketing &amp; Outreach Personalization</span>
-                            <p className="text-[10px] text-stone-500 leading-normal">
-                              Enables Christian network coordinates and sermon broadcast announcements tailored to regional member bases.
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setCookieMarketing(!cookieMarketing)}
-                            className={`px-3 py-1 text-[10px] font-bold font-mono transition-colors rounded-none cursor-pointer uppercase ${
-                              cookieMarketing
-                                ? "bg-brand-sage text-white font-bold"
-                                : "bg-stone-200 text-stone-600 hover:bg-stone-300"
-                            }`}
-                          >
-                            {cookieMarketing ? "Enabled" : "Disabled"}
-                          </button>
-                        </div>
-                      </div>
-
-                      {prefsSuccessMsg && (
-                        <div className="p-3 bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-2 font-mono text-[11px]">
-                          <CheckCircle className="w-4 h-4 text-emerald-600" />
-                          <span>{prefsSuccessMsg}</span>
-                        </div>
-                      )}
-
-                      <button
-                        type="submit"
-                        className="bg-stone-800 hover:bg-black text-white font-mono text-xs font-bold uppercase tracking-widest px-6 py-3 rounded-none cursor-pointer transition-all server"
-                      >
-                        Save Privacy preferences
-                      </button>
-                    </form>
-
-                    {/* Historical Login History Log */}
-                    <div className="space-y-2 pt-4">
-                      <h5 className="text-xs uppercase font-bold text-stone-800 tracking-wider font-mono">Your Authorized Login History</h5>
-                      <p className="text-[10px] text-stone-500">
-                        View active login records for your username credential signature:
-                      </p>
-                      
-                      <div className="border border-stone-200 rounded-none overflow-hidden max-h-36 overflow-y-auto font-mono text-[10px]">
-                        <table className="w-full text-left border-collapse">
-                          <thead>
-                            <tr className="bg-brand-bg text-stone-500 border-b border-stone-200 text-[9px] uppercase">
-                              <th className="p-2">Timestamp</th>
-                              <th className="p-2">Device/Agent</th>
-                              <th className="p-2">Location</th>
-                              <th className="p-2 text-right">Status</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {currentUser.loginHistory && currentUser.loginHistory.length > 0 ? (
-                              currentUser.loginHistory.map((log) => (
-                                <tr key={log.id} className="border-b border-stone-100 hover:bg-stone-50">
-                                  <td className="p-2 text-stone-800">{log.timestamp}</td>
-                                  <td className="p-2 text-stone-500 max-w-[150px] truncate" title={log.device}>{log.device}</td>
-                                  <td className="p-2 text-stone-500">{log.location}</td>
-                                  <td className="p-2 text-right text-emerald-600 font-bold">{log.status}</td>
-                                </tr>
-                              ))
-                            ) : (
-                              <tr>
-                                <td colSpan={4} className="p-3 text-center text-stone-400 italic">No available logging reports.</td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* 3. NOTIFICATIONS TAB */}
-                {settingsActiveTab === "notifications" && (
-                  <form onSubmit={handleSavePreferences} className="space-y-6 animate-fade-in">
-                    <div className="space-y-4">
-                      <h5 className="text-xs uppercase font-bold text-stone-800 tracking-wider font-mono">Fellowship Email Preferences</h5>
-                      <p className="text-[10px] text-stone-500">
-                        Adjust what communications and newsletters are emailed to <span className="font-bold underline">{settingsEmail}</span>:
-                      </p>
-
-                      <div className="space-y-3 bg-brand-bg p-4 border border-brand-border">
-                        <label className="flex items-start gap-3 cursor-pointer select-none">
-                          <input
-                            type="checkbox"
-                            checked={notifNewsletter}
-                            onChange={(e) => setNotifNewsletter(e.target.checked)}
-                            className="mt-0.5 w-4 h-4 text-brand-sage focus:ring-[#7C8363] border-brand-border rounded-none"
-                          />
-                          <div>
-                            <span className="font-bold text-stone-800 text-[11px] uppercase font-mono tracking-wide leading-none block">Weekly Wine Newsletter &amp; Calendar</span>
-                            <span className="text-[10px] text-stone-500 block mt-0.5">
-                              Receive our weekly worship reviews, prayer needs list, and event bulletins.
-                            </span>
-                          </div>
-                        </label>
-
-                        <label className="flex items-start gap-3 cursor-pointer select-none pt-3 border-t border-brand-border/40">
-                          <input
-                            type="checkbox"
-                            checked={notifSystemUpdates}
-                            onChange={(e) => setNotifSystemUpdates(e.target.checked)}
-                            className="mt-0.5 w-4 h-4 text-brand-sage focus:ring-[#7C8363] border-brand-border rounded-none"
-                          />
-                          <div>
-                            <span className="font-bold text-stone-800 text-[11px] uppercase font-mono tracking-wide leading-none block">System, Security, &amp; Administrative Alerts</span>
-                            <span className="text-[10px] text-stone-500 block mt-0.5">
-                              Crucial communications about login passkeys, verification code updates, or change requests.
-                            </span>
-                          </div>
-                        </label>
-
-                        <label className="flex items-start gap-3 cursor-pointer select-none pt-3 border-t border-brand-border/40">
-                          <input
-                            type="checkbox"
-                            checked={notifPrayerCircle}
-                            onChange={(e) => setNotifPrayerCircle(e.target.checked)}
-                            className="mt-0.5 w-4 h-4 text-brand-sage focus:ring-[#7C8363] border-brand-border rounded-none"
-                          />
-                          <div>
-                            <span className="font-bold text-stone-800 text-[11px] uppercase font-mono tracking-wide block leading-none">Instant Prayer Request Circular Calls</span>
-                            <span className="text-[10px] text-stone-500 block mt-0.5">
-                              Instant email logs whenever a parishioner posts an online prayer request request.
-                            </span>
-                          </div>
-                        </label>
-                      </div>
-                    </div>
-
-                    <div className="space-y-4">
-                      <h5 className="text-xs uppercase font-bold text-stone-800 tracking-wider font-mono">Mobile &amp; Web Push Notification Controls</h5>
-                      <p className="text-[10px] text-stone-500">
-                        Adjust direct system notifications dispatched to your active browser/device:
-                      </p>
-
-                      <div className="space-y-3 bg-brand-bg p-4 border border-brand-border">
-                        <label className="flex items-start gap-3 cursor-pointer select-none">
-                          <input
-                            type="checkbox"
-                            checked={notifWeeklyDevos}
-                            onChange={(e) => setNotifWeeklyDevos(e.target.checked)}
-                            className="mt-0.5 w-4 h-4 text-brand-sage focus:ring-[#7C8363] border-brand-border rounded-none"
-                          />
-                          <div>
-                            <span className="font-bold text-stone-800 text-[11px] uppercase font-mono tracking-wide leading-none block">Weekly Scripture Devotional Highlights</span>
-                            <span className="text-[10px] text-stone-500 block mt-0.5">
-                              Short notification prompts to keep you encouraged and feed your spiritual growth.
-                            </span>
-                          </div>
-                        </label>
-
-                        <label className="flex items-start gap-3 cursor-pointer select-none pt-3 border-t border-brand-border/40">
-                          <input
-                            type="checkbox"
-                            checked={notifSermonReleases}
-                            onChange={(e) => setNotifSermonReleases(e.target.checked)}
-                            className="mt-0.5 w-4 h-4 text-brand-sage focus:ring-[#7C8363] border-brand-border rounded-none"
-                          />
-                          <div>
-                            <span className="font-bold text-stone-800 text-[11px] uppercase font-mono tracking-wide leading-none block">New Sermon Broadcast &amp; Ministry Releases</span>
-                            <span className="text-[10px] text-stone-500 block mt-0.5">
-                              Keep updated whenever pastor uploads study videos, audio podcasts, or live streams.
-                            </span>
-                          </div>
-                        </label>
-                      </div>
-                    </div>
-
-                    {prefsSuccessMsg && (
-                      <div className="p-3 bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-2 font-mono text-[11px]">
-                        <CheckCircle className="w-4 h-4 text-emerald-600" />
-                        <span>{prefsSuccessMsg}</span>
-                      </div>
-                    )}
-
-                    <button
-                      type="submit"
-                      className="bg-[#2C2C2C] hover:bg-black text-white font-mono text-xs font-bold uppercase tracking-widest px-6 py-3.5 rounded-none cursor-pointer transition-all"
-                    >
-                      Save Communication Preferences
-                    </button>
-                  </form>
-                )}
-
-                {/* 4. ACCOUNT MANAGEMENT TAB */}
-                {settingsActiveTab === "management" && (
-                  <div className="space-y-6 animate-fade-in">
-                    
-                    {/* DOWNLOAD DATA CONTROL */}
-                    <div className="p-5 border border-brand-border bg-brand-bg space-y-4">
-                      <div className="flex items-center gap-2">
-                        <Download className="w-5 h-5 text-brand-dark" />
-                        <h5 className="text-[11px] uppercase font-bold text-stone-800 tracking-wider font-mono">Download Personal Data archive</h5>
-                      </div>
-                      
-                      <p className="text-[11px] text-stone-600 leading-normal">
-                        You can download a complete backup of all profile information, security history records, email preferences, and settings stored in this web app session. The archive is formatted in a machine-readable JSON format for personal data compliance standards.
-                      </p>
-
-                      <button
-                        type="button"
-                        onClick={handleDownloadPersonalData}
-                        className="bg-brand-dark hover:bg-black text-white font-mono text-xs font-bold uppercase tracking-widest px-5 py-3 rounded-none cursor-pointer transition-all flex items-center gap-2"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        <span>Download JSON Data Backup</span>
-                      </button>
-                    </div>
-
-                    {/* DEACTIVATE / DELETE */}
-                    <div className="p-5 border border-red-200 bg-red-50/40 space-y-4">
-                      <div className="flex items-center gap-2 text-red-850">
-                        <AlertTriangle className="w-5 h-5 text-red-650 animate-pulse" />
-                        <h5 className="text-[11px] uppercase font-bold tracking-wider font-mono text-red-800">Danger Zone: Purge Member Profile</h5>
-                      </div>
-                      
-                      <p className="text-[11px] text-[#801010] leading-normal">
-                        Deactivating or deleting this account will immediately revoke your access to the member worship portal dashboard, log you out of active browser contexts, and purge your custom stats. This action is permanently irreversible.
-                      </p>
-
-                      {!isConfirmingDelete ? (
-                        <button
-                          type="button"
-                          onClick={() => setIsConfirmingDelete(true)}
-                          className="bg-red-600 hover:bg-red-700 text-white font-mono text-xs font-bold uppercase tracking-widest px-5 py-3 rounded-none cursor-pointer transition-all border border-red-700"
-                        >
-                          Delete Account Permanent Profile
-                        </button>
-                      ) : (
-                        <div className="p-4 bg-[#FFECEC] border-l-4 border-red-600 text-xs space-y-3 animate-slide-in">
-                          <p className="font-bold text-red-900 flex items-center gap-1">
-                            <span>⚠️ Are you absolutely certain you want to purge your profile?</span>
-                          </p>
-                          <p className="text-[#801010] text-[10.5px]">
-                            All stored credentials for <code className="font-bold bg-[#F9D5D5] px-1">{currentUser.username}</code> will be deleted from the registered members database.
-                          </p>
-                          <div className="flex gap-3">
-                            <button
-                              type="button"
-                              onClick={() => setIsConfirmingDelete(false)}
-                              className="px-4 py-2 border border-[#CCCCCC] font-mono font-bold text-stone-700 bg-white hover:bg-stone-50 cursor-pointer"
-                            >
-                              Cancel Operation
-                            </button>
-                            <button
-                              type="button"
-                              onClick={executeAccountDeletion}
-                              className="px-4 py-2 bg-red-600 hover:bg-red-850 text-white font-mono font-bold uppercase tracking-wider cursor-pointer border border-red-700 font-bold"
-                            >
-                              Yes, Delete My Account
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPreviewMode((v) => !v)}
+              className={`px-3 py-2 text-xs border flex items-center gap-1 ${previewMode ? "bg-[#1f2a1f] text-[#a5f3a5]" : "text-[#f6e8c7]"}`}
+            >
+              <Eye className="w-4 h-4" /> {previewMode ? "Preview Mode" : "Public Mode"}
+            </button>
+            <button
+              onClick={() => setEditorOpen((v) => !v)}
+              className="px-3 py-2 text-xs border border-[#5f5643] text-[#f6e8c7] flex items-center gap-1"
+            >
+              <LayoutPanelLeft className="w-4 h-4" /> {editorOpen ? "Hide Editor" : "Open Editor"}
+            </button>
           </div>
         </div>
-      )}
+      </header>
 
-      {/* ==========================================
-          PLAN A SUNDAY VISIT MODAL
-          ========================================== */}
-      {isPlanVisitOpen && (
-        <div id="visit-modal-overlay" className="fixed inset-0 z-50 bg-[#1A1A1A]/80 backdrop-blur-xs flex items-center justify-center p-4">
-          <div id="visit-modal-dialog" className="bg-white rounded-none border border-brand-border shadow-none max-w-md w-full overflow-hidden animate-scale-up text-left">
-            <div className="bg-brand-dark p-6 text-white flex justify-between items-center border-b border-[#2C2C2C]">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-brand-sage" />
-                <span className="font-serif font-light text-base tracking-tight text-brand-beige">Plan A Sunday Visit Log</span>
+      <main className="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <section className="xl:col-span-2 bg-[#11100d] border border-[#302b21] min-h-[560px]">
+          {currentPage ? (
+            <div>
+              {currentPage.sections
+                .filter((section) => section.visible)
+                .map((section) => {
+                  const selected = selectedSectionId === section.id;
+                  const typography = applyTypography(
+                    draftContent.theme.fonts,
+                    section.style.typography || {},
+                  );
+                  const sectionBg = section.style.colors.backgroundColor || draftContent.theme.colors.sectionBackground;
+                  return (
+                    <article
+                      key={section.id}
+                      onClick={() => {
+                        if (editorOpen) {
+                          setSelectedSectionId(section.id);
+                          setActiveTab("sections");
+                        }
+                      }}
+                      className={`p-8 border-b border-[#2e2a22] cursor-pointer transition-all ${selected ? "outline outline-2 outline-[#d9b24c]" : ""}`}
+                      style={{
+                        background: section.style.backgroundImage
+                          ? `linear-gradient(${draftContent.theme.colors.overlayColor}, ${draftContent.theme.colors.overlayColor}), url(${section.style.backgroundImage}) center/cover`
+                          : sectionBg,
+                      }}
+                    >
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="text-[11px] uppercase tracking-wider text-[#cdbf9d]">{section.name}</div>
+                        {editorOpen && <div className="text-[10px] text-[#d9b24c]">Click to edit</div>}
+                      </div>
+
+                      <SectionRenderer
+                        section={section}
+                        content={displayContent}
+                        typography={typography}
+                        theme={displayContent.theme.colors}
+                      />
+                    </article>
+                  );
+                })}
+            </div>
+          ) : (
+            <div className="p-8 text-[#cdbf9d]">No visible page found.</div>
+          )}
+
+          <footer className="p-6 border-t border-[#2f2b21]" style={{ background: displayContent.theme.colors.footerColor }}>
+            <div className="text-sm text-[#f4ecde]">{displayContent.footer.text}</div>
+            <div className="text-xs text-[#c7bca1] mt-2">
+              {displayContent.contact.email} | {displayContent.contact.phone} | {displayContent.contact.address}
+            </div>
+          </footer>
+        </section>
+
+        {editorOpen && cmsState && (
+          <aside className="bg-[#14120e] border border-[#302b21] text-[#f5ecdc]">
+            <div className="p-4 border-b border-[#2f2b21] flex flex-wrap gap-2 items-center justify-between">
+              <div>
+                <div className="text-sm font-semibold">Administrator Control Board</div>
+                <div className="text-[10px] text-[#bcae8c]">Autosave enabled, backed by server storage</div>
               </div>
-              <button
-                id="btn-close-visit-modal"
-                onClick={() => setIsPlanVisitOpen(false)}
-                className="text-[#8C8C8C] hover:text-white transition-colors cursor-pointer bg-transparent border-0"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="text-[10px] text-[#d9b24c]">{saving ? "Saving..." : statusMessage}</div>
             </div>
 
-            <form onSubmit={handlePlanVisitSubmit} id="modal-form-plan-visit" className="p-6 space-y-4 text-xs font-light">
-              <p className="text-[#5A5A5A] font-sans leading-relaxed text-[11px]">
-                Let us know you are coming!
-              </p>
+            <div className="p-3 border-b border-[#2f2b21] flex flex-wrap gap-2">
+              <button onClick={handleUndo} className="px-2 py-1 border border-[#5b523f] text-xs flex items-center gap-1" disabled={undoStack.length === 0}>
+                <Undo2 className="w-3 h-3" /> Undo
+              </button>
+              <button onClick={handleRedo} className="px-2 py-1 border border-[#5b523f] text-xs flex items-center gap-1" disabled={redoStack.length === 0}>
+                <Redo2 className="w-3 h-3" /> Redo
+              </button>
+              <button onClick={handlePublish} className="px-2 py-1 border border-[#d9b24c] bg-[#d9b24c] text-black text-xs flex items-center gap-1">
+                <Save className="w-3 h-3" /> Publish
+              </button>
+              {selectedSection && (
+                <button onClick={handleResetSection} className="px-2 py-1 border border-[#5b523f] text-xs">
+                  Reset Section
+                </button>
+              )}
+            </div>
 
-              <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-[#8A8A8A] uppercase tracking-wider font-mono">Your Full Name *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Thomas cooper"
-                  value={visitName}
-                  onChange={(e) => setVisitName(e.target.value)}
-                  className="w-full p-3 bg-brand-bg rounded-none border border-brand-border text-xs text-brand-dark focus:outline-none focus:border-brand-sage"
-                  id="visit-modal-input-name"
-                />
+            <div className="p-3 border-b border-[#2f2b21]">
+              <div className="grid grid-cols-3 gap-2">
+                {cmsState.versions.slice(0, 3).map((version) => (
+                  <button
+                    key={version.id}
+                    onClick={() => void handleRestoreVersion(version.id)}
+                    className="p-2 border border-[#4a4334] text-left"
+                    title={version.createdAt}
+                  >
+                    <div className="text-[10px] uppercase text-[#d7c296]">{version.label}</div>
+                    <div className="text-[10px] text-[#9f957a] mt-1">Restore</div>
+                  </button>
+                ))}
               </div>
+            </div>
 
-              <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-[#8A8A8A] uppercase tracking-wider font-mono">Estimated Sunday Date *</label>
-                <input
-                  type="date"
-                  required
-                  value={visitDate}
-                  onChange={(e) => setVisitDate(e.target.value)}
-                  className="w-full p-3 bg-brand-bg rounded-none border border-brand-border text-xs text-brand-dark font-mono focus:outline-none focus:border-brand-sage"
-                  id="visit-modal-input-date"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-[#8A8A8A] uppercase tracking-wider font-mono">Preferred Service hour *</label>
-                <select
-                  value={visitTime}
-                  onChange={(e) => setVisitTime(e.target.value)}
-                  className="w-full p-3 bg-brand-bg rounded-none border border-brand-border text-xs text-brand-dark focus:outline-none focus:border-brand-sage cursor-pointer"
-                  id="visit-modal-select-time"
+            <div className="p-2 border-b border-[#2f2b21] flex flex-wrap gap-1">
+              {editorTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`px-2 py-1 text-[11px] border ${activeTab === tab.id ? "bg-[#d9b24c] text-black border-[#d9b24c]" : "border-[#4d4535]"}`}
                 >
-                  <option value="10:00 AM Morning Gathering">10:00 AM Morning Gathering</option>
-                  <option value="6:00 PM Evening Gathering">6:00 PM Evening Gathering</option>
-                </select>
-              </div>
+                  {tab.label}
+                </button>
+              ))}
+            </div>
 
-              {visitPlanSuccess && (
-                <div className="bg-[#7C8363]/10 text-[#3D4030] rounded-none p-4 font-mono text-[11px] border border-[#7C8363]/20 whitespace-pre-wrap select-text animate-fade-in">
-                  ✨ Visit Confirmed!
+            <div className="p-3 max-h-[68vh] overflow-y-auto text-sm space-y-4">
+              {activeTab === "general" && (
+                <div className="space-y-3">
+                  <Input label="Site title" value={draftContent.siteTitle} onChange={(value) => applyDraftMutation((d) => { d.siteTitle = value; }, "Site title saved")} />
+                  <Input label="Menu subtitle" value={draftContent.menuTitle} onChange={(value) => applyDraftMutation((d) => { d.menuTitle = value; }, "Menu subtitle saved")} />
+                  <Input label="Logo URL" value={draftContent.theme.logo} onChange={(value) => updateThemePath(["logo"], value)} />
+                  <Input label="Hero banner image" value={draftContent.theme.heroBannerImage} onChange={(value) => updateThemePath(["heroBannerImage"], value)} />
+                  <Input label="Background image" value={draftContent.theme.backgroundImage} onChange={(value) => updateThemePath(["backgroundImage"], value)} />
                 </div>
               )}
 
-              <button
-                id="btn-visit-modal-submit"
-                type="submit"
-                className="w-full bg-brand-dark hover:bg-black text-white font-mono text-xs font-bold uppercase tracking-widest py-4 border border-brand-dark rounded-none cursor-pointer transition-all"
-              >
-                Lock Visitor Schedule
-              </button>
-            </form>
-          </div>
+              {activeTab === "homepage" && (
+                <div className="space-y-2">
+                  <div className="text-xs uppercase tracking-wider text-[#d4c59d]">Homepage quick controls</div>
+                  {findPage(draftContent, "page-home")?.sections.map((section) => (
+                    <button
+                      key={section.id}
+                      onClick={() => {
+                        setActivePageId("page-home");
+                        setSelectedSectionId(section.id);
+                        setActiveTab("sections");
+                      }}
+                      className="w-full text-left px-3 py-2 border border-[#4d4535]"
+                    >
+                      {section.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {activeTab === "pages" && (
+                <PageManager
+                  content={draftContent}
+                  activePageId={activePageId}
+                  onPickPage={(pageId) => setActivePageId(pageId)}
+                  onAdd={() => applyDraftMutation((draft) => {
+                    const pageId = uid("page");
+                    draft.pages.push({
+                      id: pageId,
+                      title: "New Page",
+                      slug: `new-page-${draft.pages.length + 1}`,
+                      template: "default",
+                      visible: true,
+                      sections: [
+                        {
+                          id: uid("sec"),
+                          name: "Intro",
+                          type: "text",
+                          visible: true,
+                          content: { title: "New section", body: "Edit this section from the CMS." },
+                          style: { typography: {}, colors: {} },
+                        },
+                      ],
+                    });
+                    setActivePageId(pageId);
+                  }, "Page created")}
+                  onDelete={(pageId) => applyDraftMutation((draft) => {
+                    draft.pages = draft.pages.filter((page) => page.id !== pageId);
+                    if (activePageId === pageId) {
+                      setActivePageId(draft.pages[0]?.id || "");
+                    }
+                  }, "Page deleted")}
+                  onDuplicate={(pageId) => applyDraftMutation((draft) => {
+                    const page = draft.pages.find((item) => item.id === pageId);
+                    if (!page) return;
+                    const copyId = uid("page");
+                    const clone = structuredClone(page);
+                    clone.id = copyId;
+                    clone.title = `${clone.title} Copy`;
+                    clone.slug = `${clone.slug}-copy-${Math.floor(Math.random() * 1000)}`;
+                    clone.sections = clone.sections.map((section) => ({
+                      ...section,
+                      id: uid("sec"),
+                    }));
+                    draft.pages.push(clone);
+                    setActivePageId(copyId);
+                  }, "Page duplicated")}
+                  onMove={movePage}
+                  onUpdate={(pageId, updater) => applyDraftMutation((draft) => {
+                    const page = draft.pages.find((item) => item.id === pageId);
+                    if (!page) return;
+                    updater(page);
+                  }, "Page settings updated")}
+                />
+              )}
+
+              {activeTab === "navigation" && (
+                <NavigationManager
+                  content={draftContent}
+                  onMutate={(mutator, message) => applyDraftMutation(mutator, message)}
+                />
+              )}
+
+              {activeTab === "sections" && (
+                <SectionManager
+                  content={draftContent}
+                  activePageId={activePageId}
+                  selectedSectionId={selectedSectionId}
+                  setSelectedSectionId={setSelectedSectionId}
+                  onMove={moveSection}
+                  onMutate={(mutator, message) => applyDraftMutation(mutator, message)}
+                  onUpdatePath={updateSectionPath}
+                  onUpdateStyle={updateSectionStyle}
+                  onSetActivePage={setActivePageId}
+                />
+              )}
+
+              {activeTab === "media" && (
+                <MediaManager
+                  media={draftContent.mediaLibrary}
+                  onUpload={handleMediaUpload}
+                  onDelete={(id) => applyDraftMutation((draft) => {
+                    draft.mediaLibrary = draft.mediaLibrary.filter((item) => item.id !== id);
+                  }, "Media removed")}
+                />
+              )}
+
+              {activeTab === "appearance" && (
+                <ColorAndTypographyEditor
+                  typography={draftContent.theme.fonts}
+                  colors={draftContent.theme.colors}
+                  onTypographyChange={(path, value) => updateThemePath(["fonts", ...path], value)}
+                  onColorChange={(path, value) => updateThemePath(["colors", ...path], value)}
+                />
+              )}
+
+              {activeTab === "theme" && (
+                <div className="space-y-3">
+                  <Input label="Theme logo" value={draftContent.theme.logo} onChange={(value) => updateThemePath(["logo"], value)} />
+                  <Input label="Hero banner image" value={draftContent.theme.heroBannerImage} onChange={(value) => updateThemePath(["heroBannerImage"], value)} />
+                  <Input label="Global background image" value={draftContent.theme.backgroundImage} onChange={(value) => updateThemePath(["backgroundImage"], value)} />
+                </div>
+              )}
+
+              {activeTab === "footer" && (
+                <div className="space-y-3">
+                  <Input
+                    label="Footer text"
+                    value={draftContent.footer.text}
+                    onChange={(value) => applyDraftMutation((draft) => {
+                      draft.footer.text = value;
+                    }, "Footer updated")}
+                  />
+                </div>
+              )}
+
+              {activeTab === "contact" && (
+                <div className="space-y-3">
+                  <Input label="Contact email" value={draftContent.contact.email} onChange={(value) => applyDraftMutation((draft) => { draft.contact.email = value; }, "Contact saved")} />
+                  <Input label="Contact phone" value={draftContent.contact.phone} onChange={(value) => applyDraftMutation((draft) => { draft.contact.phone = value; }, "Contact saved")} />
+                  <Input label="Contact address" value={draftContent.contact.address} onChange={(value) => applyDraftMutation((draft) => { draft.contact.address = value; }, "Contact saved")} />
+                </div>
+              )}
+
+              {activeTab === "events" && (
+                <CollectionManager
+                  title="Events"
+                  items={draftContent.events}
+                  makeItem={() => ({ id: uid("evt"), title: "New Event", date: new Date().toISOString().slice(0, 10), location: "", description: "" })}
+                  fields={["title", "date", "location", "description"]}
+                  onMutate={(mutator, msg) => applyDraftMutation((draft) => {
+                    mutator(draft.events as unknown as Record<string, unknown>[]);
+                  }, msg)}
+                />
+              )}
+
+              {activeTab === "ministries" && (
+                <CollectionManager
+                  title="Ministries"
+                  items={draftContent.ministries}
+                  makeItem={() => ({ id: uid("min"), title: "New Ministry", summary: "", lead: "" })}
+                  fields={["title", "summary", "lead"]}
+                  onMutate={(mutator, msg) => applyDraftMutation((draft) => {
+                    mutator(draft.ministries as unknown as Record<string, unknown>[]);
+                  }, msg)}
+                />
+              )}
+
+              {selectedSection && activeTab !== "sections" && (
+                <div className="border border-[#4d4535] p-2 text-xs text-[#d8caab]">
+                  Selected section: {selectedSection.name}. Open the Sections tab to edit its content, colors, typography, and buttons.
+                </div>
+              )}
+            </div>
+          </aside>
+        )}
+      </main>
+
+      {error && (
+        <div className="fixed bottom-4 right-4 bg-[#3a1010] text-[#ffd8d8] border border-[#7a3131] px-3 py-2 text-xs max-w-sm">
+          {error}
+          <button className="ml-2 underline" onClick={() => setError(null)}>
+            close
+          </button>
         </div>
       )}
     </div>
   );
 }
+
+function Input({ label, value, onChange }: { label: string; value: string | number; onChange: (value: string) => void }) {
+  return (
+    <label className="block space-y-1">
+      <span className="text-[11px] uppercase tracking-wider text-[#bcae8c]">{label}</span>
+      <input
+        value={String(value ?? "")}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full bg-[#0f0d0a] border border-[#4c4434] px-3 py-2 text-sm"
+      />
+    </label>
+  );
+}
+
+function ColorInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <div className="space-y-1">
+      <span className="text-[11px] uppercase tracking-wider text-[#bcae8c] block">{label}</span>
+      <div className="flex gap-2">
+        <input type="color" value={value.startsWith("#") ? value : "#000000"} onChange={(e) => onChange(e.target.value)} className="w-12 h-10 bg-transparent border border-[#4c4434]" />
+        <input value={value} onChange={(e) => onChange(e.target.value)} className="flex-1 bg-[#0f0d0a] border border-[#4c4434] px-3 py-2 text-sm" placeholder="#hex or rgb(...)" />
+      </div>
+    </div>
+  );
+}
+
+function SectionRenderer({
+  section,
+  content,
+  typography,
+  theme,
+}: {
+  section: SectionModel;
+  content: SiteContent;
+  typography: React.CSSProperties;
+  theme: ColorSettings;
+}) {
+  const c = section.content as Record<string, any>;
+
+  if (section.type === "hero") {
+    const button = c.button || {};
+    return (
+      <div style={typography} className="space-y-4">
+        <div className="text-[11px] uppercase tracking-widest text-[#ccb483]">{c.eyebrow || "Hero"}</div>
+        <h1 className="text-4xl font-semibold">{c.title || "Hero Title"}</h1>
+        <p className="text-base opacity-80">{c.subtitle || "Hero subtitle"}</p>
+        {button.visible !== false && (
+          <a
+            href={button.link || "#"}
+            className={`${buttonSize(button.size || "md")} inline-flex items-center gap-2`}
+            style={{
+              background: button.color || theme.buttonColor,
+              borderRadius: `${Number(button.borderRadius || 0)}px`,
+              color: "#111",
+            }}
+          >
+            {button.icon ? <span>{button.icon}</span> : null}
+            {button.text || "Click"}
+          </a>
+        )}
+      </div>
+    );
+  }
+
+  if (section.type === "events") {
+    const items = c.useGlobalEvents ? content.events : c.items || [];
+    return (
+      <div style={typography}>
+        <h2 className="text-2xl mb-4">{c.title || "Events"}</h2>
+        <div className="grid sm:grid-cols-2 gap-3">
+          {items.map((item: any) => (
+            <div key={item.id || item.title} className="p-3 border" style={{ borderColor: theme.borderColor, background: theme.cardColor }}>
+              <div className="font-semibold">{item.title}</div>
+              <div className="text-xs opacity-80">{item.date} | {item.location}</div>
+              <p className="text-sm mt-2 opacity-90">{item.description}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (section.type === "ministries") {
+    const items = c.useGlobalMinistries ? content.ministries : c.items || [];
+    return (
+      <div style={typography}>
+        <h2 className="text-2xl mb-4">{c.title || "Ministries"}</h2>
+        <div className="grid sm:grid-cols-2 gap-3">
+          {items.map((item: any) => (
+            <div key={item.id || item.title} className="p-3 border" style={{ borderColor: theme.borderColor, background: theme.cardColor }}>
+              <div className="font-semibold">{item.title}</div>
+              <div className="text-xs opacity-80">Lead: {item.lead}</div>
+              <p className="text-sm mt-2 opacity-90">{item.summary}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (section.type === "contact") {
+    return (
+      <div style={typography} className="space-y-2">
+        <h2 className="text-2xl">{c.title || "Contact"}</h2>
+        <p>{c.body || "Contact us"}</p>
+        <p className="text-sm opacity-90">{content.contact.email}</p>
+        <p className="text-sm opacity-90">{content.contact.phone}</p>
+        <p className="text-sm opacity-90">{content.contact.address}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={typography} className="space-y-3">
+      {c.title && <h2 className="text-2xl">{String(c.title)}</h2>}
+      {c.body && <p className="opacity-90 whitespace-pre-wrap">{String(c.body)}</p>}
+      {!c.title && !c.body && <pre className="text-xs opacity-80 whitespace-pre-wrap">{JSON.stringify(c, null, 2)}</pre>}
+    </div>
+  );
+}
+
+function PageManager({
+  content,
+  activePageId,
+  onPickPage,
+  onAdd,
+  onDelete,
+  onDuplicate,
+  onMove,
+  onUpdate,
+}: {
+  content: SiteContent;
+  activePageId: string;
+  onPickPage: (pageId: string) => void;
+  onAdd: () => void;
+  onDelete: (pageId: string) => void;
+  onDuplicate: (pageId: string) => void;
+  onMove: (from: number, to: number) => void;
+  onUpdate: (pageId: string, updater: (page: PageModel) => void) => void;
+}) {
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+
+  return (
+    <div className="space-y-2">
+      <button onClick={onAdd} className="w-full border border-[#5a513f] px-3 py-2 text-xs flex items-center justify-center gap-1">
+        <Plus className="w-3 h-3" /> Create page
+      </button>
+
+      {content.pages.map((page, index) => (
+        <div
+          key={page.id}
+          className="border border-[#4a4335] p-2 space-y-2"
+          draggable
+          onDragStart={() => setDragIndex(index)}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={() => {
+            if (dragIndex === null) return;
+            onMove(dragIndex, index);
+            setDragIndex(null);
+          }}
+          onDragEnd={() => setDragIndex(null)}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <button onClick={() => onPickPage(page.id)} className={`text-left flex-1 text-sm ${page.id === activePageId ? "text-[#d9b24c]" : ""}`}>
+              {page.title}
+            </button>
+            <div className="flex gap-1">
+              <button onClick={() => onMove(index, Math.max(index - 1, 0))} className="p-1 border border-[#5a513f]"><ArrowUp className="w-3 h-3" /></button>
+              <button onClick={() => onMove(index, Math.min(index + 1, content.pages.length - 1))} className="p-1 border border-[#5a513f]"><ArrowDown className="w-3 h-3" /></button>
+              <button onClick={() => onDuplicate(page.id)} className="p-1 border border-[#5a513f]"><Plus className="w-3 h-3" /></button>
+              <button onClick={() => onDelete(page.id)} className="p-1 border border-[#5a513f]"><Trash2 className="w-3 h-3" /></button>
+            </div>
+          </div>
+
+          <Input label="Page name" value={page.title} onChange={(value) => onUpdate(page.id, (p) => { p.title = value; })} />
+          <Input label="Slug/URL" value={page.slug} onChange={(value) => onUpdate(page.id, (p) => { p.slug = value.replace(/\s+/g, "-").toLowerCase(); })} />
+
+          <label className="flex items-center justify-between text-xs">
+            <span className="text-[#bcae8c] uppercase tracking-wider">Template</span>
+            <select
+              value={page.template}
+              onChange={(e) => onUpdate(page.id, (p) => { p.template = e.target.value as PageModel["template"]; })}
+              className="bg-[#0f0d0a] border border-[#4d4535] px-2 py-1"
+            >
+              <option value="default">Default</option>
+              <option value="landing">Landing</option>
+              <option value="blog">Blog</option>
+              <option value="events">Events</option>
+            </select>
+          </label>
+
+          <label className="flex items-center gap-2 text-xs">
+            <input type="checkbox" checked={page.visible} onChange={(e) => onUpdate(page.id, (p) => { p.visible = e.target.checked; })} />
+            Page visible
+          </label>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function NavigationManager({
+  content,
+  onMutate,
+}: {
+  content: SiteContent;
+  onMutate: (mutator: (draft: SiteContent) => void, message: string) => void;
+}) {
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+
+  return (
+    <div className="space-y-2">
+      <button
+        className="w-full border border-[#5a513f] px-3 py-2 text-xs flex items-center justify-center gap-1"
+        onClick={() => onMutate((draft) => {
+          draft.navigation.push({
+            id: uid("nav"),
+            label: "New Link",
+            type: "external",
+            url: "https://example.com",
+            visible: true,
+            children: [],
+          });
+        }, "Navigation link added")}
+      >
+        <Plus className="w-3 h-3" /> Add navigation link
+      </button>
+
+      {content.navigation.map((item, index) => (
+        <div
+          key={item.id}
+          className="border border-[#4a4335] p-2 space-y-2"
+          draggable
+          onDragStart={() => setDragIndex(index)}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={() => {
+            if (dragIndex === null) return;
+            onMutate((draft) => {
+              draft.navigation = reorder(draft.navigation, dragIndex, index);
+            }, "Navigation reordered");
+            setDragIndex(null);
+          }}
+          onDragEnd={() => setDragIndex(null)}
+        >
+          <div className="flex items-center gap-2">
+            <input
+              value={item.label}
+              onChange={(e) => onMutate((draft) => {
+                const target = draft.navigation.find((n) => n.id === item.id);
+                if (!target) return;
+                target.label = e.target.value;
+              }, "Navigation label updated")}
+              className="flex-1 bg-[#0f0d0a] border border-[#4d4535] px-2 py-1 text-sm"
+            />
+            <button className="p-1 border border-[#5a513f]" onClick={() => onMutate((draft) => {
+              draft.navigation = reorder(draft.navigation, index, Math.max(index - 1, 0));
+            }, "Navigation reordered")}><ArrowUp className="w-3 h-3" /></button>
+            <button className="p-1 border border-[#5a513f]" onClick={() => onMutate((draft) => {
+              draft.navigation = reorder(draft.navigation, index, Math.min(index + 1, draft.navigation.length - 1));
+            }, "Navigation reordered")}><ArrowDown className="w-3 h-3" /></button>
+            <button className="p-1 border border-[#5a513f]" onClick={() => onMutate((draft) => {
+              draft.navigation = draft.navigation.filter((n) => n.id !== item.id);
+            }, "Navigation item removed")}><Trash2 className="w-3 h-3" /></button>
+          </div>
+
+          <label className="flex items-center justify-between text-xs">
+            <span className="text-[#bcae8c] uppercase tracking-wider">Type</span>
+            <select
+              value={item.type}
+              onChange={(e) => onMutate((draft) => {
+                const target = draft.navigation.find((n) => n.id === item.id);
+                if (!target) return;
+                target.type = e.target.value as NavItem["type"];
+                if (target.type === "internal") {
+                  target.pageId = draft.pages[0]?.id;
+                } else {
+                  target.url = target.url || "https://";
+                }
+              }, "Navigation type updated")}
+              className="bg-[#0f0d0a] border border-[#4d4535] px-2 py-1"
+            >
+              <option value="internal">Internal page</option>
+              <option value="external">External URL</option>
+            </select>
+          </label>
+
+          {item.type === "internal" ? (
+            <label className="flex items-center justify-between text-xs">
+              <span className="text-[#bcae8c] uppercase tracking-wider">Page</span>
+              <select
+                value={item.pageId}
+                onChange={(e) => onMutate((draft) => {
+                  const target = draft.navigation.find((n) => n.id === item.id);
+                  if (!target) return;
+                  target.pageId = e.target.value;
+                }, "Navigation target page updated")}
+                className="bg-[#0f0d0a] border border-[#4d4535] px-2 py-1"
+              >
+                {content.pages.map((page) => (
+                  <option key={page.id} value={page.id}>
+                    {page.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <Input
+              label="External URL"
+              value={item.url || ""}
+              onChange={(value) => onMutate((draft) => {
+                const target = draft.navigation.find((n) => n.id === item.id);
+                if (!target) return;
+                target.url = value;
+              }, "Navigation URL updated")}
+            />
+          )}
+
+          <label className="flex items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={item.visible}
+              onChange={(e) => onMutate((draft) => {
+                const target = draft.navigation.find((n) => n.id === item.id);
+                if (!target) return;
+                target.visible = e.target.checked;
+              }, "Navigation visibility updated")}
+            />
+            Visible in menu
+          </label>
+
+          <button
+            className="w-full border border-[#5a513f] px-2 py-1 text-xs"
+            onClick={() => onMutate((draft) => {
+              const target = draft.navigation.find((n) => n.id === item.id);
+              if (!target) return;
+              target.children = target.children || [];
+              target.children.push({
+                id: uid("nav-child"),
+                label: "Dropdown Item",
+                type: "external",
+                url: "https://example.com",
+                visible: true,
+              });
+            }, "Dropdown menu item added")}
+          >
+            Add dropdown menu item
+          </button>
+
+          {item.children?.map((child) => (
+            <div key={child.id} className="border border-[#3e372c] p-2">
+              <div className="flex gap-2">
+                <input
+                  value={child.label}
+                  onChange={(e) => onMutate((draft) => {
+                    const target = draft.navigation.find((n) => n.id === item.id);
+                    const sub = target?.children?.find((c) => c.id === child.id);
+                    if (!sub) return;
+                    sub.label = e.target.value;
+                  }, "Dropdown label updated")}
+                  className="flex-1 bg-[#0f0d0a] border border-[#4d4535] px-2 py-1 text-sm"
+                />
+                <button
+                  className="p-1 border border-[#5a513f]"
+                  onClick={() => onMutate((draft) => {
+                    const target = draft.navigation.find((n) => n.id === item.id);
+                    if (!target?.children) return;
+                    target.children = target.children.filter((c) => c.id !== child.id);
+                  }, "Dropdown item removed")}
+                >
+                  <Minus className="w-3 h-3" />
+                </button>
+              </div>
+              <Input
+                label="URL"
+                value={child.url || ""}
+                onChange={(value) => onMutate((draft) => {
+                  const target = draft.navigation.find((n) => n.id === item.id);
+                  const sub = target?.children?.find((c) => c.id === child.id);
+                  if (!sub) return;
+                  sub.url = value;
+                }, "Dropdown URL updated")}
+              />
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SectionManager({
+  content,
+  activePageId,
+  selectedSectionId,
+  setSelectedSectionId,
+  onMove,
+  onMutate,
+  onUpdatePath,
+  onUpdateStyle,
+  onSetActivePage,
+}: {
+  content: SiteContent;
+  activePageId: string;
+  selectedSectionId: string | null;
+  setSelectedSectionId: (id: string | null) => void;
+  onMove: (from: number, to: number) => void;
+  onMutate: (mutator: (draft: SiteContent) => void, message: string) => void;
+  onUpdatePath: (path: string[], value: unknown) => void;
+  onUpdateStyle: (path: string[], value: unknown) => void;
+  onSetActivePage: (pageId: string) => void;
+}) {
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const page = findPage(content, activePageId);
+  const selected = selectedSectionId ? page?.sections.find((item) => item.id === selectedSectionId) : null;
+
+  return (
+    <div className="space-y-2">
+      <label className="block space-y-1">
+        <span className="text-[11px] uppercase tracking-wider text-[#bcae8c]">Editing page</span>
+        <select
+          className="w-full bg-[#0f0d0a] border border-[#4d4535] px-2 py-2 text-sm"
+          value={activePageId}
+          onChange={(e) => {
+            onSetActivePage(e.target.value);
+            setSelectedSectionId(null);
+          }}
+        >
+          {content.pages.map((p) => (
+            <option key={p.id} value={p.id}>{p.title}</option>
+          ))}
+        </select>
+      </label>
+
+      <button
+        className="w-full border border-[#5a513f] px-3 py-2 text-xs flex items-center justify-center gap-1"
+        onClick={() => onMutate((draft) => {
+          const target = findPage(draft, activePageId);
+          if (!target) return;
+          const section: SectionModel = {
+            id: uid("sec"),
+            name: "New Section",
+            type: "text",
+            visible: true,
+            content: { title: "Section title", body: "Section body" },
+            style: { typography: {}, colors: {} },
+          };
+          target.sections.push(section);
+          setSelectedSectionId(section.id);
+        }, "Section added")}
+      >
+        <Plus className="w-3 h-3" /> Add new section
+      </button>
+
+      {page?.sections.map((section, index) => (
+        <div
+          key={section.id}
+          className={`border p-2 ${selectedSectionId === section.id ? "border-[#d9b24c]" : "border-[#4a4335]"}`}
+          draggable
+          onDragStart={() => setDragIndex(index)}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={() => {
+            if (dragIndex === null) return;
+            onMove(dragIndex, index);
+            setDragIndex(null);
+          }}
+          onDragEnd={() => setDragIndex(null)}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <button className="flex-1 text-left text-sm" onClick={() => setSelectedSectionId(section.id)}>{section.name}</button>
+            <div className="flex gap-1">
+              <button className="p-1 border border-[#5a513f]" onClick={() => onMove(index, Math.max(index - 1, 0))}><ArrowUp className="w-3 h-3" /></button>
+              <button className="p-1 border border-[#5a513f]" onClick={() => onMove(index, Math.min(index + 1, (page?.sections.length || 1) - 1))}><ArrowDown className="w-3 h-3" /></button>
+              <button className="p-1 border border-[#5a513f]" onClick={() => onMutate((draft) => {
+                const target = findPage(draft, activePageId);
+                const current = target?.sections.find((s) => s.id === section.id);
+                if (!target || !current) return;
+                const copy = structuredClone(current);
+                copy.id = uid("sec");
+                copy.name = `${current.name} Copy`;
+                target.sections.splice(index + 1, 0, copy);
+              }, "Section duplicated")}><Plus className="w-3 h-3" /></button>
+              <button className="p-1 border border-[#5a513f]" onClick={() => onMutate((draft) => {
+                const target = findPage(draft, activePageId);
+                if (!target) return;
+                target.sections = target.sections.filter((s) => s.id !== section.id);
+                if (selectedSectionId === section.id) setSelectedSectionId(null);
+              }, "Section deleted")}><Trash2 className="w-3 h-3" /></button>
+            </div>
+          </div>
+
+          <div className="mt-2 flex items-center gap-2 text-xs">
+            <label className="flex items-center gap-1"><input type="checkbox" checked={section.visible} onChange={(e) => onMutate((draft) => {
+              const target = findSection(draft, activePageId, section.id);
+              if (!target) return;
+              target.visible = e.target.checked;
+            }, "Section visibility updated")} /> visible</label>
+          </div>
+        </div>
+      ))}
+
+      {selected && (
+        <div className="border border-[#4a4335] p-2 space-y-3">
+          <Input label="Section name" value={selected.name} onChange={(value) => onMutate((draft) => {
+            const section = findSection(draft, activePageId, selected.id);
+            if (!section) return;
+            section.name = value;
+          }, "Section renamed")} />
+          <label className="block space-y-1">
+            <span className="text-[11px] uppercase tracking-wider text-[#bcae8c]">Section type</span>
+            <select
+              value={selected.type}
+              onChange={(e) => onMutate((draft) => {
+                const section = findSection(draft, activePageId, selected.id);
+                if (!section) return;
+                section.type = e.target.value;
+              }, "Section type updated")}
+              className="w-full bg-[#0f0d0a] border border-[#4d4535] px-3 py-2 text-sm"
+            >
+              <option value="hero">Hero</option>
+              <option value="text">Text</option>
+              <option value="events">Events</option>
+              <option value="ministries">Ministries</option>
+              <option value="contact">Contact</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+
+          <div>
+            <div className="text-[11px] uppercase tracking-wider text-[#bcae8c] mb-2">Section content</div>
+            <DynamicEditor value={selected.content} path={[]} onChange={onUpdatePath} />
+          </div>
+
+          <div>
+            <div className="text-[11px] uppercase tracking-wider text-[#bcae8c] mb-2">Typography controls</div>
+            <TypographyEditor
+              typography={{ ...emptyTypography, ...(selected.style.typography || {}) }}
+              onChange={(path, value) => onUpdateStyle(["typography", ...path], value)}
+            />
+          </div>
+
+          <div>
+            <div className="text-[11px] uppercase tracking-wider text-[#bcae8c] mb-2">Color controls</div>
+            <ColorEditor
+              colors={{ ...content.theme.colors, ...(selected.style.colors || {}) }}
+              onChange={(path, value) => onUpdateStyle(["colors", ...path], value)}
+            />
+          </div>
+
+          <Input
+            label="Section background image"
+            value={selected.style.backgroundImage || ""}
+            onChange={(value) => onUpdateStyle(["backgroundImage"], value)}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MediaManager({
+  media,
+  onUpload,
+  onDelete,
+}: {
+  media: MediaItem[];
+  onUpload: (file: File) => void;
+  onDelete: (id: string) => void;
+}) {
+  return (
+    <div className="space-y-3">
+      <label className="border border-dashed border-[#5f5643] px-3 py-4 text-center text-xs block cursor-pointer">
+        <input
+          type="file"
+          className="hidden"
+          accept="image/*,application/pdf,video/*"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) onUpload(file);
+            e.currentTarget.value = "";
+          }}
+        />
+        <span className="inline-flex items-center gap-2"><Upload className="w-4 h-4" /> Upload image, logo, PDF, or video</span>
+      </label>
+
+      {media.map((item) => (
+        <div key={item.id} className="border border-[#4b4335] p-2 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            {item.type === "image" || item.type === "logo" ? (
+              <img src={item.url} alt={item.name} className="w-10 h-10 object-cover border border-[#5b523f]" />
+            ) : (
+              <div className="w-10 h-10 border border-[#5b523f] grid place-items-center text-[10px]">{item.type}</div>
+            )}
+            <div>
+              <div className="text-xs">{item.name}</div>
+              <div className="text-[10px] text-[#bcae8c]">{item.type}</div>
+            </div>
+          </div>
+          <div className="flex gap-1">
+            <a href={item.url} target="_blank" rel="noreferrer" className="p-1 border border-[#5b523f]"><ImagePlus className="w-3 h-3" /></a>
+            <button onClick={() => onDelete(item.id)} className="p-1 border border-[#5b523f]"><Trash2 className="w-3 h-3" /></button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TypographyEditor({
+  typography,
+  onChange,
+}: {
+  typography: TypographySettings;
+  onChange: (path: string[], value: unknown) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      <Input label="Font family" value={typography.fontFamily} onChange={(value) => onChange(["fontFamily"], value)} />
+      <Input label="Font size" value={typography.fontSize} onChange={(value) => onChange(["fontSize"], Number(value) || 16)} />
+      <Input label="Font weight" value={typography.fontWeight} onChange={(value) => onChange(["fontWeight"], Number(value) || 400)} />
+      <ColorInput label="Font color" value={typography.color} onChange={(value) => onChange(["color"], value)} />
+      <Input label="Letter spacing" value={typography.letterSpacing} onChange={(value) => onChange(["letterSpacing"], Number(value) || 0)} />
+      <Input label="Line height" value={typography.lineHeight} onChange={(value) => onChange(["lineHeight"], Number(value) || 1.5)} />
+      <label className="block space-y-1">
+        <span className="text-[11px] uppercase tracking-wider text-[#bcae8c]">Alignment</span>
+        <select value={typography.textAlign} onChange={(e) => onChange(["textAlign"], e.target.value)} className="w-full bg-[#0f0d0a] border border-[#4d4535] px-3 py-2 text-sm">
+          <option value="left">Left</option>
+          <option value="center">Center</option>
+          <option value="right">Right</option>
+        </select>
+      </label>
+      <label className="block space-y-1">
+        <span className="text-[11px] uppercase tracking-wider text-[#bcae8c]">Case</span>
+        <select value={typography.transform} onChange={(e) => onChange(["transform"], e.target.value)} className="w-full bg-[#0f0d0a] border border-[#4d4535] px-3 py-2 text-sm">
+          <option value="none">Normal</option>
+          <option value="uppercase">Uppercase</option>
+          <option value="lowercase">Lowercase</option>
+        </select>
+      </label>
+      <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={typography.bold} onChange={(e) => onChange(["bold"], e.target.checked)} /> Bold</label>
+      <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={typography.italic} onChange={(e) => onChange(["italic"], e.target.checked)} /> Italic</label>
+      <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={typography.underline} onChange={(e) => onChange(["underline"], e.target.checked)} /> Underline</label>
+    </div>
+  );
+}
+
+function ColorEditor({
+  colors,
+  onChange,
+}: {
+  colors: ColorSettings;
+  onChange: (path: string[], value: unknown) => void;
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-2">
+      <ColorInput label="Text color" value={colors.textColor} onChange={(value) => onChange(["textColor"], value)} />
+      <ColorInput label="Background color" value={colors.backgroundColor} onChange={(value) => onChange(["backgroundColor"], value)} />
+      <ColorInput label="Button color" value={colors.buttonColor} onChange={(value) => onChange(["buttonColor"], value)} />
+      <ColorInput label="Button hover color" value={colors.buttonHoverColor} onChange={(value) => onChange(["buttonHoverColor"], value)} />
+      <ColorInput label="Navigation color" value={colors.navigationColor} onChange={(value) => onChange(["navigationColor"], value)} />
+      <ColorInput label="Footer color" value={colors.footerColor} onChange={(value) => onChange(["footerColor"], value)} />
+      <ColorInput label="Card color" value={colors.cardColor} onChange={(value) => onChange(["cardColor"], value)} />
+      <ColorInput label="Border color" value={colors.borderColor} onChange={(value) => onChange(["borderColor"], value)} />
+      <ColorInput label="Section backgrounds" value={colors.sectionBackground} onChange={(value) => onChange(["sectionBackground"], value)} />
+      <Input label="Overlay color (hex/rgb/rgba)" value={colors.overlayColor} onChange={(value) => onChange(["overlayColor"], value)} />
+    </div>
+  );
+}
+
+function ColorAndTypographyEditor({
+  typography,
+  colors,
+  onTypographyChange,
+  onColorChange,
+}: {
+  typography: TypographySettings;
+  colors: ColorSettings;
+  onTypographyChange: (path: string[], value: unknown) => void;
+  onColorChange: (path: string[], value: unknown) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <div>
+        <div className="text-[11px] uppercase tracking-wider text-[#bcae8c] mb-2">Typography controls</div>
+        <TypographyEditor typography={typography} onChange={onTypographyChange} />
+      </div>
+      <div>
+        <div className="text-[11px] uppercase tracking-wider text-[#bcae8c] mb-2">Color controls</div>
+        <ColorEditor colors={colors} onChange={onColorChange} />
+      </div>
+    </div>
+  );
+}
+
+function DynamicEditor({
+  value,
+  path,
+  onChange,
+}: {
+  value: unknown;
+  path: string[];
+  onChange: (path: string[], value: unknown) => void;
+}) {
+  if (typeof value === "string") {
+    const key = path[path.length - 1] || "value";
+    if (/(color)$/i.test(key)) {
+      return <ColorInput label={key} value={value} onChange={(next) => onChange(path, next)} />;
+    }
+    return <Input label={key} value={value} onChange={(next) => onChange(path, next)} />;
+  }
+
+  if (typeof value === "number") {
+    return <Input label={path[path.length - 1] || "value"} value={value} onChange={(next) => onChange(path, Number(next) || 0)} />;
+  }
+
+  if (typeof value === "boolean") {
+    return (
+      <label className="flex items-center gap-2 text-xs">
+        <input type="checkbox" checked={value} onChange={(e) => onChange(path, e.target.checked)} />
+        {path[path.length - 1] || "enabled"}
+      </label>
+    );
+  }
+
+  if (Array.isArray(value)) {
+    return (
+      <div className="space-y-2">
+        <div className="text-[11px] uppercase tracking-wider text-[#bcae8c]">{path[path.length - 1] || "items"}</div>
+        {value.map((item, index) => (
+          <div key={`${path.join(".")}-${index}`} className="border border-[#4a4335] p-2">
+            <DynamicEditor value={item} path={[...path, String(index)]} onChange={onChange} />
+            <button
+              className="mt-2 px-2 py-1 border border-[#5a513f] text-xs"
+              onClick={() => {
+                const next = value.filter((_, i) => i !== index);
+                onChange(path, next);
+              }}
+            >
+              Remove item
+            </button>
+          </div>
+        ))}
+        <button
+          className="px-2 py-1 border border-[#5a513f] text-xs"
+          onClick={() => {
+            const next = [...value, typeof value[0] === "object" ? {} : ""];
+            onChange(path, next);
+          }}
+        >
+          Add item
+        </button>
+      </div>
+    );
+  }
+
+  if (typeof value === "object" && value !== null) {
+    const obj = value as Record<string, unknown>;
+    return (
+      <div className="space-y-2">
+        {Object.entries(obj).map(([key, child]) => (
+          <div key={[...path, key].join(".")}>{<DynamicEditor value={child} path={[...path, key]} onChange={onChange} />}</div>
+        ))}
+      </div>
+    );
+  }
+
+  return null;
+}
+
+function CollectionManager({
+  title,
+  items,
+  makeItem,
+  fields,
+  onMutate,
+}: {
+  title: string;
+  items: Record<string, unknown>[];
+  makeItem: () => Record<string, unknown>;
+  fields: string[];
+  onMutate: (mutator: (items: Record<string, unknown>[]) => void, message: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <button
+        className="w-full border border-[#5a513f] px-3 py-2 text-xs flex items-center justify-center gap-1"
+        onClick={() => onMutate((list) => {
+          list.push(makeItem());
+        }, `${title} item added`)}
+      >
+        <Plus className="w-3 h-3" /> Add {title.slice(0, -1)}
+      </button>
+
+      {items.map((item, index) => (
+        <div key={String(item.id || index)} className="border border-[#4a4335] p-2 space-y-2">
+          <div className="flex justify-between items-center">
+            <div className="text-xs text-[#d5c7a4]">{String(item.title || `${title} ${index + 1}`)}</div>
+            <button
+              className="p-1 border border-[#5a513f]"
+              onClick={() => onMutate((list) => {
+                list.splice(index, 1);
+              }, `${title} item deleted`)}
+            >
+              <Trash2 className="w-3 h-3" />
+            </button>
+          </div>
+
+          {fields.map((field) => (
+            <div key={field}>
+              <Input
+                label={field}
+                value={String(item[field] || "")}
+                onChange={(value) => onMutate((list) => {
+                  const target = list[index];
+                  target[field] = value;
+                }, `${title} updated`)}
+              />
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export default App;
