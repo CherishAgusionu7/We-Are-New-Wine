@@ -1,10 +1,9 @@
 import { GeneralConfig, ChurchEvent, Sermon, Devotional, StaffMember, PastServiceGalleryItem } from "./types";
-import heroImage from "./assets/images/new_wine_emblem_logo_1780015559822.png";
 
 export const initialGeneralConfig: GeneralConfig = {
   churchName: "New Wine",
   tagline: "Pouring timeless truth into fresh, seeking hearts",
-  heroImage,
+  heroImage: "/src/assets/images/new_wine_gathering_1779999539114.png",
   missionStatement: "Our mission is to awaken a generation to Christ by proclaiming the Gospel, reviving the Holy Spirit within believers, and raising passionate young people who live by God’s Word. Through prayer, worship in spirit and truth, and bold service, we seek to impact the world and honor God wholeheartedly.",
   visionStatement: "To see our cities and neighborhoods completely renewed by the grace of Jesus Christ through vibrant modern worship, deep discipleship, and unceasing prayer.",
   statementOfFaith: "We believe in the holy Trinity: Father, Son, and Holy Spirit. We believe in salvation solely by grace through faith in the death and resurrection of Jesus Christ. We believe the Bible is the inspired, infallible voice of God, and that the Holy Spirit actively indwells, empowers, and guides believers to live holy lives today.",
