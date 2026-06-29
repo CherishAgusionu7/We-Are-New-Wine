@@ -71,8 +71,8 @@ export default function Navbar({
               onClick={() => handleTabClick("home")}
               className="flex items-center gap-3 text-brand-dark group cursor-pointer"
             >
-              <div className="text-left">
-                <span className="font-serif font-bold tracking-normal text-2xl block uppercase leading-none">
+              <div className="text-left w-full">
+                <span className="font-serif font-bold tracking-normal text-2xl block uppercase leading-none text-[#E6BC53]" style={{ color: "#E6BC53" }}>
                   New{"\u00a0"}Wine
                 </span>
                 <span className="font-sans text-[9px] uppercase tracking-[0.2em] text-[#6B6B6B] block mt-1">
@@ -234,8 +234,9 @@ export default function Navbar({
               className={`block w-full text-left px-4 py-3 rounded-md text-base font-semibold transition-all ${
                 activeTab === tab.id
                   ? "bg-stone-900 text-white shadow-xs"
-                  : "text-stone-700 hover:text-stone-900 hover:bg-stone-100/60"
+                  : "text-[#B2A795] hover:text-[#E6BC53] hover:bg-stone-150"
               }`}
+              style={{ color: "#E6BC53" }}
             >
               {tab.label}
             </button>

@@ -30,23 +30,23 @@ export default function Footer({ config, setActiveTab }: FooterProps) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
           {/* Column 1: Service Times & Location */}
           <div className="space-y-4 text-left">
-            <h3 className="font-mono text-[9px] uppercase tracking-[0.2em] text-brand-sage font-bold">
+            <h3 className="font-mono text-[9px] uppercase tracking-[0.2em] text-black font-bold" style={{ color: "#000000" }}>
               Gathering Location &amp; Times
             </h3>
             <div className="space-y-3 text-xs font-light">
               <div className="flex items-start gap-2.5">
-                <MapPin className="w-4.5 h-4.5 text-brand-sage flex-shrink-0 mt-0.5" />
-                <span className="text-[#D5D2C8] leading-snug">
+                <MapPin className="w-4.5 h-4.5 text-black flex-shrink-0 mt-0.5" style={{ color: "#000000" }} />
+                <span className="text-black leading-snug" style={{ color: "#000000" }}>
                   {config.address}
                 </span>
               </div>
               <div className="flex items-start gap-2.5">
-                <Church className="w-4.5 h-4.5 text-brand-sage flex-shrink-0 mt-0.5" />
+                <Church className="w-4.5 h-4.5 text-black flex-shrink-0 mt-0.5" style={{ color: "#000000" }} />
                 <div>
-                  <span className="text-brand-beige block font-bold text-[10px] uppercase font-mono tracking-wider">
+                  <span className="text-black block font-bold text-[10px] uppercase font-mono tracking-wider" style={{ color: "#000000" }}>
                     {config.serviceDay}
                   </span>
-                  <span className="text-[#A6A399] text-[11px] block mt-0.5">
+                  <span className="text-black text-[11px] block mt-0.5" style={{ color: "#000000" }}>
                     {config.serviceTime}
                   </span>
                 </div>
@@ -56,38 +56,41 @@ export default function Footer({ config, setActiveTab }: FooterProps) {
 
           {/* Column 2: Contact & Connections */}
           <div className="space-y-4 text-left">
-            <h3 className="font-mono text-[9px] uppercase tracking-[0.2em] text-brand-sage font-bold">
+            <h3 className="font-mono text-[9px] uppercase tracking-[0.2em] text-black font-bold" style={{ color: "#000000" }}>
               Direct Office Contacts
             </h3>
             <div className="space-y-3 text-xs font-light">
               <a
                 id="footer-contact-phone"
                 href={`tel:${config.phone}`}
-                className="flex items-center gap-2.5 text-[#D5D2C8] hover:text-[#FFFFFF] transition-colors"
+                className="flex items-center gap-2.5 text-black hover:text-[#000000] transition-colors"
+                style={{ color: "#000000" }}
               >
-                <Phone className="w-4.5 h-4.5 text-brand-sage flex-shrink-0" />
-                <span>{config.phone}</span>
+                <Phone className="w-4.5 h-4.5 text-black flex-shrink-0" style={{ color: "#000000" }} />
+                <span style={{ color: "#000000" }}>{config.phone}</span>
               </a>
               <a
                 id="footer-contact-mail"
                 href={`mailto:${config.email}`}
-                className="flex items-center gap-2.5 text-[#D5D2C8] hover:text-[#FFFFFF] transition-colors break-all"
+                className="flex items-center gap-2.5 text-black hover:text-[#000000] transition-colors break-all"
+                style={{ color: "#000000" }}
               >
-                <Mail className="w-4.5 h-4.5 text-brand-sage flex-shrink-0" />
-                <span className="text-[11px]">{config.email}</span>
+                <Mail className="w-4.5 h-4.5 text-black flex-shrink-0" style={{ color: "#000000" }} />
+                <span className="text-[11px]" style={{ color: "#000000" }}>{config.email}</span>
               </a>
             </div>
 
             {/* Micro Social Badges */}
-            <div className="flex items-center gap-3 pt-3 text-[#8A8A8A] border-t border-[#2C2C2C]/30 mt-4">
-              <span className="text-[9px] font-mono uppercase tracking-wider block">
+            <div className="flex items-center gap-3 pt-3 text-black border-t border-[#2C2C2C]/30 mt-4" style={{ color: "#000000" }}>
+              <span className="text-[9px] font-mono uppercase tracking-wider block text-black" style={{ color: "#000000" }}>
                 Connect:
               </span>
               <a
                 href="https://www.instagram.com/newwine_tribe/"
                 target="_blank"
                 rel="noreferrer"
-                className="text-brand-sage hover:text-white transition-colors text-xs font-medium underline decoration-brand-sage/30 underline-offset-4"
+                className="text-black hover:text-black font-bold transition-colors text-xs font-medium underline decoration-black/30 underline-offset-4"
+                style={{ color: "#000000" }}
               >
                 Instagram
               </a>

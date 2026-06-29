@@ -152,7 +152,7 @@ export function HomeView({
               </span>
               <span className="text-[10px] text-[#8A8A8A] font-mono">{latestDevotional?.date}</span>
             </div>
-            <h3 className="font-serif text-xl text-brand-dark">
+            <h3 className="font-serif text-xl text-[#E6BC53]">
               Weekly Devotional
             </h3>
             <p className="text-[10px] text-brand-sage font-mono uppercase tracking-wider font-semibold">
@@ -164,7 +164,7 @@ export function HomeView({
           </div>
           <button
             onClick={() => setActiveTab("about")}
-            className="text-brand-dark text-xs font-bold uppercase tracking-wider hover:text-brand-sage transition-all flex items-center gap-1 mt-6 cursor-pointer bg-transparent border-0 p-0"
+            className="text-[#E6BC53] text-xs font-bold uppercase tracking-wider hover:text-brand-sage transition-all flex items-center gap-1 mt-6 cursor-pointer bg-transparent border-0 p-0"
           >
             Read Faith Story &rarr;
           </button>
@@ -179,13 +179,13 @@ export function HomeView({
               </span>
               <span className="text-[10px] text-[#8A8A8A] font-mono">{upcomingEvents.length} Active</span>
             </div>
-            <h3 className="font-serif text-xl text-brand-dark">
+            <h3 className="font-serif text-xl text-[#E6BC53]">
               Upcoming Assemblies
             </h3>
             <div className="space-y-3 pt-1">
               {upcomingEvents.map((evt) => (
                 <div key={evt.id} className="text-xs border-b border-[#E5E2DA] pb-1.5 last:border-0 last:pb-0">
-                  <div className="font-bold text-brand-dark truncate">{evt.title}</div>
+                  <div className="font-bold text-[#E6BC53] truncate">{evt.title}</div>
                   <div className="text-[10px] text-[#7A7A7A] font-mono">{evt.date} at {evt.time}</div>
                 </div>
               ))}
@@ -193,7 +193,7 @@ export function HomeView({
           </div>
           <button
             onClick={() => setActiveTab("events")}
-            className="text-brand-dark text-xs font-bold uppercase tracking-wider hover:text-brand-sage transition-all flex items-center gap-1 mt-6 cursor-pointer bg-transparent border-0 p-0"
+            className="text-[#E6BC53] text-xs font-bold uppercase tracking-wider hover:text-brand-sage transition-all flex items-center gap-1 mt-6 cursor-pointer bg-transparent border-0 p-0"
           >
             Full Calendar List &rarr;
           </button>
@@ -946,7 +946,7 @@ export function ContactView({ config, onSubmitPrayer, onSubmitSignup }: ContactV
             <span className="inline-block font-mono text-[9px] uppercase tracking-[0.2em] text-brand-sage bg-brand-sage/10 border border-brand-sage/25 px-3 py-1.5 font-bold">
               First - Time Visitor Log
             </span>
-            <h2 id="title-connect-form" className="font-serif font-light text-2xl text-brand-dark tracking-tight leading-snug">
+            <h2 id="title-connect-form" className="font-serif font-light text-2xl tracking-tight leading-snug text-[#E6BC53]">
               Get Connected to the Community
             </h2>
             <p className="text-xs text-[#5A5A5A] font-sans leading-relaxed font-light">
@@ -1056,7 +1056,7 @@ export function ContactView({ config, onSubmitPrayer, onSubmitSignup }: ContactV
             <span className="inline-block font-mono text-[9px] uppercase tracking-[0.2em] text-brand-sage bg-brand-sage/10 border border-brand-sage/25 px-3 py-1.5 font-bold">
               Confidential Intercession
             </span>
-            <h2 id="title-prayer-form" className="font-serif font-light text-2xl text-brand-dark tracking-tight leading-snug">
+            <h2 id="title-prayer-form" className="font-serif font-light text-2xl tracking-tight leading-snug text-[#E6BC53]">
               Secure Prayer Request Form
             </h2>
             <p className="text-xs text-[#5A5A5A] font-sans leading-relaxed font-light">
@@ -1100,7 +1100,7 @@ export function ContactView({ config, onSubmitPrayer, onSubmitSignup }: ContactV
                 rows={4}
                 value={prayerText}
                 onChange={(e) => setPrayerText(e.target.value)}
-                className="w-full text-xs p-3 bg-brand-bg rounded-none border border-brand-border text-brand-dark focus:outline-none focus:border-brand-sage transition-all font-sans font-light leading-relaxed"
+                className="w-full text-xs p-3 bg-brand-bg rounded-none border border-brand-border text-brand-dark focus:outline-none focus:border-brand-sage transition-all font-sans font-light leading-relaxed font-sans font-light leading-relaxed"
                 id="prayer-textarea-body"
               />
             </div>
@@ -1115,7 +1115,7 @@ export function ContactView({ config, onSubmitPrayer, onSubmitSignup }: ContactV
                 className="mt-1 cursor-pointer accent-brand-sage text-brand-sage rounded-none"
               />
               <label htmlFor="checkbox-prayer-confidentiality" className="text-[#5A5A5A] cursor-pointer text-[11px] leading-snug">
-                <strong className="text-brand-dark">Confidential Request:</strong> Only share this prayer request with Pastoral team members (Keep hidden from public lists).
+                <strong className="text-[#E6BC53]">Confidential Request:</strong> Only share this prayer request with Pastoral team members (Keep hidden from public lists).
               </label>
             </div>
 

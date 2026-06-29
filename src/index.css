@@ -7,12 +7,12 @@
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
   --font-times: "Times New Roman", Times, serif;
   
-  --color-brand-bg: #FDFCFB;
-  --color-brand-dark: #2D2D2D;
-  --color-brand-sage: #7C8363;
-  --color-brand-sage-dark: #686d52;
-  --color-brand-beige: #F4F1EA;
-  --color-brand-border: #E5E2DA;
+  --color-brand-bg: #0F0F0E;
+  --color-brand-dark: #1F1E1B;
+  --color-brand-sage: #D4AF37;
+  --color-brand-sage-dark: #B5932A;
+  --color-brand-beige: #1D1B17;
+  --color-brand-border: #2C2922;
 }
 
 /* Animations and geometric styling */
@@ -34,6 +34,131 @@
 /* Base custom font helper and focus colors */
 body {
   font-family: var(--font-sans);
-  background-color: var(--color-brand-bg);
-  color: var(--color-brand-dark);
+  background-color: var(--color-brand-bg) !important;
+  color: #F2ECE0 !important;
+}
+
+/* BLACK & GOLD THEME OVERRIDES */
+
+/* Main backgrounds */
+html, body, #root, .bg-brand-bg, .bg-\[\#FDFCFB\], .bg-brand-bg\/95 {
+  background-color: #0B0B0A !important;
+}
+
+/* Container background overrides (replacing white and light-beige) */
+.bg-white, 
+.bg-[#FDFCFB], 
+.bg-brand-beige, 
+.bg-\[\#F4F1EA\],
+#settings-modal-dialog,
+#visit-modal-dialog {
+  background-color: #151412 !important;
+  color: #F2ECE0 !important;
+}
+
+/* Borders */
+.border-brand-border, 
+.border-stone-100, 
+.border-stone-200, 
+.border-stone-300, 
+.border-\[\#E5E2DA\], 
+.border-stone-150,
+.divide-brand-border > *,
+.divide-stone-100 > *,
+.divide-stone-200 > * {
+  border-color: #332F26 !important;
+}
+
+/* Neutral text overrides to ensure readability on dark background */
+.text-brand-dark, 
+.text-stone-900, 
+.text-stone-800, 
+.text-stone-700, 
+.text-stone-600,
+.text-gray-900,
+.text-gray-800 {
+  color: #F2ECE0 !important; /* Pale warm cream text */
+}
+
+/* Soft text overrides for subtle text elements */
+.text-stone-500, 
+.text-stone-400, 
+.text-gray-500, 
+.text-gray-400,
+.text-\[\#5A5A5A\], 
+.text-\[\#6B6B6B\], 
+.text-\[\#7A7A7A\], 
+.text-[#8A8A8A] {
+  color: #B2A795 !important; /* Medium warm grey/gold */
+}
+
+/* Highlights & Golds */
+.text-brand-sage, 
+.text-brand-sage-dark,
+.text-\[\#7C8363\],
+.text-amber-800,
+.text-emerald-700,
+.text-emerald-600 {
+  color: #E6BC53 !important; /* Warm gold accent */
+}
+
+/* Input boxes & form fields */
+input, select, textarea {
+  background-color: #0E0D0C !important;
+  color: #F2ECE0 !important;
+  border-color: #332F26 !important;
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: #E6BC53 !important;
+}
+
+/* Primary/Brand dark buttons & sidebars */
+.bg-brand-dark, 
+.bg-\[\#2D2D2D\], 
+.bg-\[\#2C2C2C\], 
+.bg-stone-900, 
+.bg-stone-800 {
+  background-color: #E6BC53 !important; /* Bright Rich Gold */
+  color: #0B0B0A !important; /* Dark text for contrast */
+}
+
+.bg-brand-dark:hover, 
+.bg-stone-900:hover, 
+.bg-stone-800:hover, 
+.hover\:bg-black:hover {
+  background-color: #CDA036 !important; /* Slightly darker gold on hover */
+  color: #0B0B0A !important;
+}
+
+/* Header/Nav and other specific overrides */
+header, nav, .bg-brand-header {
+  background-color: #151412 !important;
+  border-bottom: 1px solid #332F26 !important;
+}
+
+/* Secondary Gold Button style */
+.bg-brand-sage, .bg-\[\#7C8363\] {
+  background-color: #E6BC53 !important;
+  color: #0B0B0A !important;
+}
+
+.bg-brand-sage:hover {
+  background-color: #CDA036 !important;
+}
+
+/* Decorative Watermark */
+.text-\[\#F4F1EA\], .text-xs.font-mono.text-stone-300 {
+  color: #1F1E1B !important;
+}
+
+/* Accent boxes (Alert, warnings, info cards) */
+.bg-brand-sage\/10 {
+  background-color: rgba(230, 188, 83, 0.1) !important;
+  color: #E6BC53 !important;
+}
+
+.bg-emerald-50, .bg-amber-50, .bg-blue-50 {
+  background-color: #201D17 !important;
+  border-color: #3D3528 !important;
 }
