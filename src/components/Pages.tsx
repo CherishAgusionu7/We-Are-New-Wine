@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from "react";
-import { getHomepage } from "../services/cmsService";
+import React, { useState } from "react";
 import {
   Play,
   Pause,
@@ -58,19 +57,6 @@ export function HomeView({
   const latestSermon = sermons[0];
   const latestDevotional = devotionals[0];
   const upcomingEvents = events.slice(0, 3);
-
-  useEffect(() => {
-  async function testFirestore() {
-    try {
-      const data = await getHomepage();
-      console.log("Homepage from Firestore:", data);
-    } catch (error) {
-      console.error("Firestore error:", error);
-    }
-  }
-
-  testFirestore();
-}, []);
 
   return (
     <div className="space-y-16 animate-fade-in text-brand-dark">
